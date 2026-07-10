@@ -1,0 +1,17 @@
+[
+  { "name": "Garage Beer Co", "origin": "Barcelona", "verified": true, "source": "seed" },
+  { "name": "Espiga", "origin": "Sant Llorenç d'Hortons", "verified": true, "source": "seed" },
+  { "name": "La Pirata", "origin": "Súria", "verified": true, "source": "seed" },
+  { "name": "Basqueland", "origin": "Hernani", "verified": true, "source": "seed" },
+  { "name": "Cierzo Brewing", "origin": "Zaragoza", "verified": true, "source": "seed" },
+  { "name": "Althaia", "origin": "Altea", "verified": true, "source": "seed" },
+  { "name": "Península", "origin": "Madrid", "verified": true, "source": "seed" },
+  { "name": "Oso Brew", "origin": "Madrid", "verified": true, "source": "seed" },
+  { "name": "Dougall's", "origin": "Liérganes", "verified": true, "source": "seed" },
+  { "name": "Naparbier", "origin": "Noáin", "verified": true, "source": "seed" },
+  { "name": "Edge Brewing", "origin": "Barcelona", "verified": true, "source": "seed" },
+  { "name": "Barcelona Beer Company", "origin": "Barcelona", "verified": true, "source": "seed" },
+  { "name": "Guineu", "origin": "Valls de Torroella", "verified": true, "source": "seed" },
+  { "name": "Montseny", "origin": "Sant Miquel de Balenyà", "verified": true, "source": "seed" },
+  { "name": "As Cervesa Artesana", "origin": "Girona", "verified": true, "source": "seed" }
+]

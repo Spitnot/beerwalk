@@ -1,0 +1,238 @@
+[
+  {
+    "id": "bwusers00000001",
+    "name": "users",
+    "type": "auth",
+    "listRule": "id = @request.auth.id",
+    "viewRule": "id = @request.auth.id",
+    "createRule": "",
+    "updateRule": "id = @request.auth.id",
+    "deleteRule": "id = @request.auth.id",
+    "fields": [
+      { "name": "display_name", "type": "text", "required": false },
+      {
+        "name": "role",
+        "type": "select",
+        "required": true,
+        "maxSelect": 1,
+        "values": ["aficionado", "bar", "cervecera", "admin"]
+      },
+      { "name": "device_id", "type": "text", "required": false }
+    ]
+  },
+  {
+    "id": "bwbreweries0001",
+    "name": "breweries",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "@request.auth.role = 'admin'",
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      { "name": "name", "type": "text", "required": true },
+      { "name": "origin", "type": "text", "required": false },
+      { "name": "verified", "type": "bool", "required": false },
+      { "name": "source", "type": "text", "required": false },
+      {
+        "name": "claimed_by",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwusers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      }
+    ]
+  },
+  {
+    "id": "bwstyles0000001",
+    "name": "styles",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "@request.auth.role = 'admin'",
+    "updateRule": "@request.auth.role = 'admin'",
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      { "name": "name", "type": "text", "required": true },
+      { "name": "category", "type": "text", "required": false },
+      { "name": "description", "type": "text", "required": false }
+    ]
+  },
+  {
+    "id": "bwbars000000001",
+    "name": "bars",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "",
+    "updateRule": "@request.auth.role = 'admin' || claimed_by = @request.auth.id",
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      { "name": "name", "type": "text", "required": true },
+      { "name": "lat", "type": "number", "required": true },
+      { "name": "lng", "type": "number", "required": true },
+      { "name": "address", "type": "text", "required": false },
+      {
+        "name": "created_by",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwusers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      {
+        "name": "claimed_by",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwusers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      }
+    ]
+  },
+  {
+    "id": "bwscans00000001",
+    "name": "scans",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "",
+    "updateRule": "@request.auth.role = 'admin' || created_by = @request.auth.id",
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      {
+        "name": "bar",
+        "type": "relation",
+        "required": true,
+        "collectionId": "bwbars000000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      { "name": "image", "type": "file", "required": false, "maxSelect": 1, "maxSize": 10485760 },
+      { "name": "raw_ocr_json", "type": "json", "required": false },
+      {
+        "name": "created_by",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwusers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      { "name": "device_id", "type": "text", "required": false }
+    ]
+  },
+  {
+    "id": "bwscanitems0001",
+    "name": "scan_items",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "",
+    "updateRule": "",
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      {
+        "name": "scan",
+        "type": "relation",
+        "required": true,
+        "collectionId": "bwscans00000001",
+        "maxSelect": 1,
+        "cascadeDelete": true
+      },
+      {
+        "name": "brewery",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwbreweries0001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      {
+        "name": "style",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwstyles0000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      { "name": "beer_name", "type": "text", "required": false },
+      { "name": "confidence", "type": "number", "required": false },
+      { "name": "corrected_by_user", "type": "bool", "required": false }
+    ]
+  },
+  {
+    "id": "bwratings000001",
+    "name": "ratings",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "user = @request.auth.id",
+    "deleteRule": "user = @request.auth.id || @request.auth.role = 'admin'",
+    "fields": [
+      {
+        "name": "user",
+        "type": "relation",
+        "required": true,
+        "collectionId": "bwusers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": true
+      },
+      {
+        "name": "target_type",
+        "type": "select",
+        "required": true,
+        "maxSelect": 1,
+        "values": ["bar", "beer"]
+      },
+      { "name": "target_id", "type": "text", "required": true },
+      { "name": "score", "type": "number", "required": true, "min": 1, "max": 5 },
+      { "name": "comment", "type": "text", "required": false }
+    ]
+  },
+  {
+    "id": "bwfollows000001",
+    "name": "follows",
+    "type": "base",
+    "listRule": "user = @request.auth.id",
+    "viewRule": "user = @request.auth.id",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": null,
+    "deleteRule": "user = @request.auth.id",
+    "fields": [
+      {
+        "name": "user",
+        "type": "relation",
+        "required": true,
+        "collectionId": "bwusers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": true
+      },
+      {
+        "name": "target_type",
+        "type": "select",
+        "required": true,
+        "maxSelect": 1,
+        "values": ["bar", "brewery"]
+      },
+      { "name": "target_id", "type": "text", "required": true }
+    ]
+  },
+  {
+    "id": "bwtranslations1",
+    "name": "translations",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "",
+    "updateRule": null,
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      { "name": "content_type", "type": "text", "required": true },
+      { "name": "content_id", "type": "text", "required": true },
+      { "name": "lang", "type": "text", "required": true },
+      { "name": "text", "type": "text", "required": true }
+    ]
+  }
+]

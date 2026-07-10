@@ -1,0 +1,25 @@
+import { OCR_URL } from "./config";
+
+export interface MatchedEntity {
+  id: string | null;
+  name: string | null;
+  raw: string;
+  score: number;
+}
+export interface ScanItem {
+  line: string;
+  brewery: MatchedEntity | null;
+  style: MatchedEntity | null;
+  beer_name: string | null;
+  confidence: number;
+}
+
+/** Sube la foto de la pizarra al microservicio OCR */
+export async function scanBoard(imageUri: string): Promise<{ items: ScanItem[]; raw: unknown[] }> {
+  const form = new FormData();
+  // @ts-expect-error — React Native FormData file
+  form.append("image", { uri: imageUri, name: "board.jpg", type: "image/jpeg" });
+  const res = await fetch(`${OCR_URL}/ocr`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`OCR ${res.status}`);
+  return res.json();
+}

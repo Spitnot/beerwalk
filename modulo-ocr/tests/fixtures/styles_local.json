@@ -1,0 +1,10 @@
+[
+  { "name": "IPA" },
+  { "name": "Hazy IPA" },
+  { "name": "West Coast IPA" },
+  { "name": "Imperial Stout" },
+  { "name": "Lager" },
+  { "name": "Pilsner" },
+  { "name": "Sour" },
+  { "name": "Pale Ale" }
+]
