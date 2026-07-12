@@ -49,7 +49,7 @@ services:
       - PB_SERVICE_PASSWORD=${PB_ADMIN_PASSWORD:-}
       - SEARXNG_URL=${SEARXNG_URL_INTERNAL:-http://searxng:8080}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-lite-latest}
       # Refuerzo Gemini Vision (pipeline híbrido; solo cuando PaddleOCR falla)
       - VISION_ENABLED=${VISION_ENABLED:-1}
       - VISION_UNMATCHED_RATIO=${VISION_UNMATCHED_RATIO:-0.4}
