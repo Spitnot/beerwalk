@@ -24,13 +24,14 @@ const isPbId = (id: string | null | undefined): id is string => !!id && id.lengt
  */
 export default function ScanResultado() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ payload?: string; imageUri?: string }>();
+  const params = useLocalSearchParams<{ payload?: string; imageUri?: string; barId?: string }>();
   // Sin payload no hay nada que revisar: esta pantalla solo se abre tras un OCR exitoso.
   const initial: ScanItem[] = params.payload ? JSON.parse(params.payload) : [];
   const [items, setItems] = useState(initial);
   const [corrected, setCorrected] = useState<Set<number>>(new Set());
   const [bars, setBars] = useState<Bar[]>([]);
-  const [barId, setBarId] = useState<string | null>(null);
+  // Preseleccionado si la detección por proximidad fue CLARO; editable siempre
+  const [barId, setBarId] = useState<string | null>(params.barId ?? null);
   const [saving, setSaving] = useState(false);
   const [savedBar, setSavedBar] = useState<Bar | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -209,7 +210,13 @@ export default function ScanResultado() {
             style={{ ...type.body, padding: 0 }}
           />
           {item.style?.name ? (
-            isPbId(item.style.id) ? (
+            // Preferente: ficha completa de la cerveza si el bloque matcheó
+            // el catálogo `beers`; si no, el detalle de estilo como antes.
+            isPbId(item.beer?.id) ? (
+              <Link href={`/cerveza/${item.beer!.id}`}>
+                <StyleBadge name={item.style.name} />
+              </Link>
+            ) : isPbId(item.style.id) ? (
               <Link href={`/cerveza/${item.style.id}`}>
                 <StyleBadge name={item.style.name} />
               </Link>

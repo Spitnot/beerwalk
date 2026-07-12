@@ -17,10 +17,12 @@ PB_SERVICE_PASSWORD = os.getenv("PB_SERVICE_PASSWORD", "")
 # http://searxng:8080; desde el host, http://localhost:8888.
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://localhost:8888")
 # Google AI Studio (tier gratuito) — extracción/corroboración/parafraseo.
-# OJO: los modelos con versión fija (ej. gemini-2.5-flash) dejan de aceptar
-# usuarios nuevos; el alias -latest siempre resuelve a la flash vigente.
+# OJO x2: (1) los modelos con versión fija (ej. gemini-2.5-flash) dejan de
+# aceptar usuarios nuevos — usar alias -latest; (2) la cuota gratuita diaria
+# es POR MODELO (20/día en flash): el texto va en flash-lite (bucket propio,
+# límite diario mayor) y solo Vision usa flash.
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 # Confianza OCR mínima (0-1) para lanzar enriquecimiento de una línea.
 # Con fotos reales de pizarra 0.85 puede ser exigente: ajustar según resultados.
 ENRICH_MIN_CONFIDENCE = float(os.getenv("ENRICH_MIN_CONFIDENCE", "0.85"))

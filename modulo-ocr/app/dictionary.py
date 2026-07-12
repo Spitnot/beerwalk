@@ -17,6 +17,27 @@ from .config import LOCAL_DICT_PATH, POCKETBASE_URL
 
 _cache: dict[str, dict] = {}
 
+# Sufijos societarios/genéricos que las pizarras nunca escriben
+BRAND_SUFFIXES = {
+    "privatbrauerei", "brauerei", "brewery", "brewing", "bryghus", "brewers",
+    "cervecera", "cervesera", "cervesa", "cerveza", "brasserie", "co", "company",
+}
+
+
+def brand_aliases(names: dict[str, str]) -> dict[str, str]:
+    """Añade alias de marca corta ("Ayinger Privatbrauerei" → "Ayinger"):
+    las pizarras escriben la marca, no la razón social, y el fuzzy contra el
+    nombre canónico completo no llega al umbral. Sin estos alias, el acotado
+    por cervecera (Fase 0 del desempate) no se activa en fichas creadas por
+    el enriquecimiento, que usa nombres canónicos largos."""
+    out = dict(names)
+    for name, rec_id in names.items():
+        tokens = [t for t in name.split() if t.lower().strip(".") not in BRAND_SUFFIXES]
+        alias = " ".join(tokens)
+        if alias and alias != name and alias not in out:
+            out[alias] = rec_id
+    return out
+
 
 async def _fetch_collection(name: str) -> dict[str, str]:
     """Devuelve {nombre: id} de una collection de PocketBase (paginado simple)."""
@@ -38,11 +59,12 @@ async def _fetch_collection(name: str) -> dict[str, str]:
     return out
 
 
-async def _fetch_beers() -> dict[str, dict]:
-    """Catálogo de cervezas: {nombre: {id, brewery_id, brewery_name, style_id,
-    style_name}}. Si la collection no existe aún (esquema sin importar),
-    devuelve {} sin romper el resto del diccionario."""
-    out: dict[str, dict] = {}
+async def _fetch_beers() -> dict[str, list[dict]]:
+    """Catálogo de cervezas: {nombre: [fichas]}. Lista porque los nombres
+    genéricos ("Blat", "IPA") se repiten entre cerveceras — un dict simple
+    haría que una ficha pisara a la otra y el caso ambiguo ni existiría.
+    Si la collection no existe aún, devuelve {} sin romper el diccionario."""
+    out: dict[str, list[dict]] = {}
     try:
         async with httpx.AsyncClient(timeout=5) as client:
             page = 1
@@ -63,13 +85,13 @@ async def _fetch_beers() -> dict[str, dict]:
                     exp = item.get("expand") or {}
                     brewery = exp.get("brewery") or {}
                     style = exp.get("style") or {}
-                    out[item["name"]] = {
+                    out.setdefault(item["name"], []).append({
                         "id": item["id"],
                         "brewery_id": brewery.get("id"),
                         "brewery_name": brewery.get("name"),
                         "style_id": style.get("id"),
                         "style_name": style.get("name"),
-                    }
+                    })
                 if page >= data["totalPages"]:
                     break
                 page += 1
@@ -100,5 +122,6 @@ async def get_dictionaries(force_refresh: bool = False) -> tuple[dict, dict, dic
         breweries = _local_fallback("breweries")
         styles = _local_fallback("styles")
         beers = {}
+    breweries = brand_aliases(breweries)
     _cache = {"breweries": breweries, "styles": styles, "beers": beers}
     return breweries, styles, beers

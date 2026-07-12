@@ -23,7 +23,13 @@
         }
       ],
       "expo-secure-store",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BeerWalk usa tu ubicación para detectar en qué bar estás al escanear."
+        }
+      ]
     ]
   }
 }

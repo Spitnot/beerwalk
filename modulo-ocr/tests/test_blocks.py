@@ -46,9 +46,20 @@ def test_orden_de_lectura_por_filas():
 
 
 BEERS = {
-    "Boost": {"id": "beer1", "brewery_id": "b1", "brewery_name": "SOMA",
-              "style_id": "s1", "style_name": "DIPA"},
+    "Boost": [{"id": "beer1", "brewery_id": "b1", "brewery_name": "SOMA",
+               "style_id": "s1", "style_name": "DIPA"}],
 }
+
+# Nombre genérico repetido entre cerveceras — el caso que motiva la Fase 0
+BEERS_GENERICAS = {
+    "Blat": [
+        {"id": "beerE", "brewery_id": "bE", "brewery_name": "Espiga",
+         "style_id": "sW", "style_name": "Wheat"},
+        {"id": "beerA", "brewery_id": "bA", "brewery_name": "Ayinger",
+         "style_id": "sW", "style_name": "Wheat"},
+    ],
+}
+BREWERIES_GEN = {"Espiga": "bE", "Ayinger": "bA"}
 
 
 def test_match_block_prioriza_catalogo_beers():
@@ -62,6 +73,40 @@ def test_match_block_sin_catalogo_cae_a_fuzzy_normal():
     brewery, style, beer, _ = match_block("SOMA Boost 8%", {"SOMA": "b1"}, {"DIPA": "s1"}, {})
     assert beer is None
     assert brewery and brewery.id == "b1"
+
+
+def test_fase0_generico_acotado_por_cervecera():
+    # "Blat" existe en dos cerveceras; la cervecera del bloque desempata
+    _, _, beer, _ = match_block("Ayinger Blat 5,1%", BREWERIES_GEN, {}, BEERS_GENERICAS)
+    assert beer and beer.id == "beerA"
+    _, _, beer, _ = match_block("Espiga Blat 4,5%", BREWERIES_GEN, {}, BEERS_GENERICAS)
+    assert beer and beer.id == "beerE"
+
+
+def test_fase0_generico_sin_cervecera_no_adivina():
+    # Sin cervecera en el bloque, un nombre ambiguo NO se asigna a ciegas
+    brewery, _, beer, _ = match_block("Blat 4,5%", {}, {}, BEERS_GENERICAS)
+    assert beer is None and brewery is None
+
+
+def test_fase0_alias_de_marca_activa_el_acotado():
+    # Ficha canónica larga ("Ayinger Privatbrauerei") + pizarra que dice solo
+    # "Ayinger": sin alias, la cervecera no matchea y el acotado no se activa
+    from app.dictionary import brand_aliases
+
+    breweries = brand_aliases({"Ayinger Privatbrauerei": "bA", "Espiga": "bE"})
+    assert breweries.get("Ayinger") == "bA"  # alias generado
+    _, _, beer, _ = match_block("Ayinger Blat 5,1%", breweries, {}, BEERS_GENERICAS)
+    assert beer and beer.id == "beerA"  # desempatado hacia Ayinger, no Espiga
+
+
+def test_fase0_no_cruza_cerveceras():
+    # Cervecera matcheada pero su catálogo no tiene esa cerveza: no se roba
+    # la ficha de otra cervecera (identidad cruzada = peor que no matchear)
+    solo_espiga = {"Blat": [BEERS_GENERICAS["Blat"][0]]}
+    brewery, _, beer, _ = match_block("Ayinger Blat 5,1%", BREWERIES_GEN, {}, solo_espiga)
+    assert beer is None
+    assert brewery and brewery.id == "bA"  # la cervecera del bloque se conserva
 
 
 def _item(line: str, resolved: bool, conf: float = 0.9) -> ScanItem:

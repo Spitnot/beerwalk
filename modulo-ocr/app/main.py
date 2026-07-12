@@ -13,7 +13,7 @@ Prueba rápida una vez levantado:
 import logging
 import uuid
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .blocks import group_lines
@@ -32,6 +32,9 @@ from .vision import (
     weekly_stats,
 )
 
+# Sin esto, los log.info de los módulos beerwalk.* se pierden (el root logger
+# queda en WARNING y uvicorn solo configura los suyos)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
 log = logging.getLogger("beerwalk.ocr")
 
 app = FastAPI(title="BeerWalk OCR", version="0.2.0")
@@ -67,9 +70,20 @@ async def refresh_dictionary():
 
 
 @app.post("/ocr", response_model=OcrResponse)
-async def ocr_endpoint(background: BackgroundTasks, image: UploadFile = File(...)):
+async def ocr_endpoint(
+    background: BackgroundTasks,
+    image: UploadFile = File(...),
+    # Solo llega cuando la detección por proximidad en la app fue CLARO;
+    # en AMBIGUO/SIN_COINCIDENCIA la app no lo envía y todo sigue como antes.
+    bar_id: str | None = Form(None),
+):
     if image.content_type not in ("image/jpeg", "image/png", "image/webp"):
         raise HTTPException(415, "Formato no soportado (jpeg/png/webp)")
+    if bar_id:
+        log.info("escaneo con bar_id=%s (proximidad CLARO)", bar_id)
+        # TODO Fase 3 del desempate: usar bar_id aquí para el filtro de
+        # historial ("¿esta candidata ya se sirvió en este bar?") sobre las
+        # candidatas de match_block. De momento solo se registra su llegada.
 
     image_bytes = await image.read()
     if len(image_bytes) > 10 * 1024 * 1024:
@@ -118,7 +132,7 @@ async def ocr_endpoint(background: BackgroundTasks, image: UploadFile = File(...
 
     # Métrica de maduración del catálogo (una fila por escaneo, no bloquea)
     background.add_task(
-        record_scan_metric, vision_used, vision_reason, unmatched_ratio, avg_confidence, vision_usage
+        record_scan_metric, vision_used, vision_reason, unmatched_ratio, avg_confidence, vision_usage, bar_id
     )
 
     # Enriquecimiento web en background para bloques sin resolver ────────

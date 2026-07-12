@@ -5,6 +5,8 @@ import * as ImagePicker from "expo-image-picker";
 import { Screen } from "@/components/Screen";
 import { palette, radius, spacing, type } from "@/theme";
 import { scanBoard } from "@/lib/ocr";
+import { detectNearbyBar, type BarGeo, type ProximityResult } from "@/lib/geo";
+import { pb } from "@/lib/pocketbase";
 import { t } from "@/i18n";
 
 export default function Escanear() {
@@ -13,17 +15,41 @@ export default function Escanear() {
   const [error, setError] = useState<string | null>(null);
   const [lastUri, setLastUri] = useState<string | null>(null);
 
+  // Detección de bar por proximidad, con fallo seguro: cualquier problema
+  // (sin permiso, sin GPS, PocketBase caído) degrada a SIN_COINCIDENCIA y el
+  // escaneo continúa exactamente igual que siempre, sin bar_id.
+  async function detectBar(): Promise<ProximityResult> {
+    try {
+      const bars = await pb
+        .collection("bars")
+        .getFullList<BarGeo>({ fields: "id,name,lat,lng", requestKey: null });
+      return await detectNearbyBar(bars);
+    } catch {
+      return { kind: "SIN_COINCIDENCIA", bar: null };
+    }
+  }
+
   // Si el OCR falla NO se navega ni se muestra nada de ejemplo: un fallo aquí
   // nunca debe poder acabar guardado en PocketBase como si fuera un scan real.
   async function analyze(uri: string) {
     setBusy(true);
     setError(null);
     try {
-      const data = await scanBoard(uri);
+      const proximity = await detectBar();
+      // Solo el caso CLARO viaja al servicio OCR (desempate de Fase 3);
+      // AMBIGUO y SIN_COINCIDENCIA escanean como hasta ahora, sin bar_id.
+      const clearBarId = proximity.kind === "CLARO" ? proximity.bar!.id : null;
+      const data = await scanBoard(uri, clearBarId);
       setLastUri(null);
       router.push({
         pathname: "/scan-resultado",
-        params: { payload: JSON.stringify(data.items), imageUri: uri },
+        params: {
+          payload: JSON.stringify(data.items),
+          imageUri: uri,
+          // Preselección del bar en la pantalla de guardado (el usuario
+          // puede cambiarlo: la detección propone, no impone)
+          ...(clearBarId ? { barId: clearBarId } : {}),
+        },
       });
     } catch (e: any) {
       setLastUri(uri);

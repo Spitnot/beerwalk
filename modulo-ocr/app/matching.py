@@ -46,24 +46,51 @@ def _best_match(line: str, dictionary: dict[str, str]) -> MatchedEntity | None:
     return MatchedEntity(id=dictionary[name], name=name, raw=line, score=round(score, 1))
 
 
+def beer_candidates(beers: dict[str, list[dict]], brewery_id: str | None = None) -> dict[str, dict]:
+    """Candidatas del catálogo `beers` como {nombre: ficha}.
+
+    - Con brewery_id (Fase 0 del desempate): SOLO las cervezas de esa
+      cervecera — "Blat" es ambiguo, "Blat de Ayinger" no.
+    - Sin brewery_id: solo nombres inequívocos (una única ficha con ese
+      nombre en todo el catálogo). Ante un nombre genérico repetido entre
+      cerveceras NO se adivina: mejor caer a enriquecimiento que asignar
+      una identidad falsa (las fases futuras del desempate afinarán esto).
+    """
+    if brewery_id:
+        out = {}
+        for name, recs in beers.items():
+            mine = [r for r in recs if r.get("brewery_id") == brewery_id]
+            if mine:
+                out[name] = mine[0]
+        return out
+    return {name: recs[0] for name, recs in beers.items() if len(recs) == 1}
+
+
 def match_block(
     text: str,
     breweries: dict[str, str],
     styles: dict[str, str],
-    beers: dict[str, dict],
+    beers: dict[str, list[dict]],
 ) -> tuple[MatchedEntity | None, MatchedEntity | None, MatchedEntity | None, str | None]:
-    """Matching de un bloque completo: primero contra el catálogo `beers`
-    (una ficha resuelve cervecera+estilo+nombre de golpe; según crece el
-    catálogo, menos bloques necesitan refuerzo de Vision), y si no, contra
-    cerveceras/estilos sueltos como siempre.
+    """Matching de un bloque completo, en cascada:
+
+    1. Cervecera del bloque (fuzzy contra `breweries`).
+    2. Catálogo `beers` ACOTADO a esa cervecera si matcheó (Fase 0 del
+       desempate: elimina la ambigüedad de nombres genéricos y evita
+       identidades cruzadas entre cerveceras); sin cervecera, catálogo
+       completo pero solo nombres inequívocos.
+    3. Fallback: cervecera/estilo sueltos como siempre (match_line).
 
     Devuelve (brewery, style, beer, beer_name).
     """
+    brewery_hit = _best_match(text, breweries)
+
     if beers:
-        hit = _best_match(text, {name: rec["id"] for name, rec in beers.items()})
+        candidates = beer_candidates(beers, brewery_hit.id if brewery_hit else None)
+        hit = _best_match(text, {n: r["id"] for n, r in candidates.items()}) if candidates else None
         if hit and hit.name:
-            rec = beers[hit.name]
-            brewery = (
+            rec = candidates[hit.name]
+            brewery = brewery_hit or (
                 MatchedEntity(id=rec["brewery_id"], name=rec["brewery_name"], raw=text, score=hit.score)
                 if rec.get("brewery_id") else None
             )

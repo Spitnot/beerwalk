@@ -31,7 +31,7 @@ from .config import (
     VISION_UNMATCHED_RATIO,
 )
 from .enrichment import _pb_auth, _pb_create
-from .matching import _best_match
+from .matching import _best_match, beer_candidates
 from .schemas import MatchedEntity, ScanItem, VisionUsage
 
 log = logging.getLogger("beerwalk.vision")
@@ -119,7 +119,9 @@ async def vision_extract(image_bytes: bytes, mime_type: str) -> tuple[list[dict]
         total_tokens=meta.get("totalTokenCount", 0),
     )
     try:
-        text = payload["candidates"][0]["content"]["parts"][0]["text"]
+        # Saltar los parts de razonamiento ({"thought": true}) de Gemini 3.5
+        parts = payload["candidates"][0]["content"]["parts"]
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
         blocks = json.loads(text).get("blocks", [])
     except (KeyError, IndexError, json.JSONDecodeError):
         blocks = []
@@ -143,14 +145,18 @@ def build_vision_item(block: dict, breweries: dict, styles: dict, beers: dict) -
     if not line:
         return None
 
+    brewery_ent = _entity_or_named(block.get("brewery"), breweries, line)
     beer_ent = None
     if beers:
-        hit = _best_match(line, {name: rec["id"] for name, rec in beers.items()})
-        if hit:
-            beer_ent = hit
+        # Fase 0 del desempate: acotar el catálogo a la cervecera del bloque
+        candidates = beer_candidates(beers, brewery_ent.id if brewery_ent else None)
+        if candidates:
+            hit = _best_match(line, {n: r["id"] for n, r in candidates.items()})
+            if hit:
+                beer_ent = hit
     return ScanItem(
         line=line,
-        brewery=_entity_or_named(block.get("brewery"), breweries, line),
+        brewery=brewery_ent,
         style=_entity_or_named(block.get("style"), styles, line),
         beer=beer_ent,
         beer_name=block.get("beer_name"),
@@ -243,14 +249,16 @@ def merge_items(paddle_items: list[ScanItem], vision_blocks: list[dict],
 
 async def record_scan_metric(vision_used: bool, reason: str | None,
                              unmatched_ratio: float, avg_confidence: float,
-                             usage: VisionUsage | None) -> None:
+                             usage: VisionUsage | None,
+                             bar_id: str | None = None) -> None:
     """Una fila por escaneo en `ocr_metrics` (PocketBase) para poder ver el
     % semanal de refuerzo Vision bajando según madura el catálogo. Si la
     collection no existe o no hay credenciales, queda al menos el log."""
     log.info(
-        "scan_metric vision_used=%s reason=%s unmatched=%.2f avg_conf=%.2f prompt_tokens=%s output_tokens=%s",
+        "scan_metric vision_used=%s reason=%s unmatched=%.2f avg_conf=%.2f prompt_tokens=%s output_tokens=%s bar_id=%s",
         vision_used, reason, unmatched_ratio, avg_confidence,
         usage.prompt_tokens if usage else 0, usage.output_tokens if usage else 0,
+        bar_id or "-",
     )
     if not PB_SERVICE_EMAIL:
         return
@@ -266,6 +274,7 @@ async def record_scan_metric(vision_used: bool, reason: str | None,
                     "avg_confidence": round(avg_confidence, 3),
                     "prompt_tokens": usage.prompt_tokens if usage else 0,
                     "output_tokens": usage.output_tokens if usage else 0,
+                    "bar_id": bar_id or "",
                 },
             )
     except Exception:

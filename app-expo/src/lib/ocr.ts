@@ -22,11 +22,19 @@ export interface ScanItem {
   enrichment_id?: string | null;
 }
 
-/** Sube la foto de la pizarra al microservicio OCR */
-export async function scanBoard(imageUri: string): Promise<{ items: ScanItem[]; raw: unknown[] }> {
+/**
+ * Sube la foto de la pizarra al microservicio OCR.
+ * `barId` (opcional): solo cuando la detección por proximidad fue CLARO —
+ * habilita el desempate por historial de bar (Fase 3) en el matching.
+ */
+export async function scanBoard(
+  imageUri: string,
+  barId?: string | null
+): Promise<{ items: ScanItem[]; raw: unknown[] }> {
   const form = new FormData();
   // @ts-expect-error — React Native FormData file
   form.append("image", { uri: imageUri, name: "board.jpg", type: "image/jpeg" });
+  if (barId) form.append("bar_id", barId);
   const res = await fetch(`${OCR_URL}/ocr`, { method: "POST", body: form });
   if (!res.ok) throw new Error(`OCR ${res.status}`);
   return res.json();
