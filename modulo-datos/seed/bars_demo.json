@@ -1,0 +1,5 @@
+[
+  { "name": "Cerveseria La Espuma", "lat": 41.3266, "lng": 2.0946, "address": "C/ Major 12, El Prat de Llobregat" },
+  { "name": "El Grifo Dorado", "lat": 41.3809, "lng": 2.1735, "address": "C/ Ferran 8, Barcelona" },
+  { "name": "Bar Llúpol", "lat": 41.4036, "lng": 2.1744, "address": "Gràcia, Barcelona" }
+]

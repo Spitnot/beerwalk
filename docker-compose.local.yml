@@ -12,7 +12,9 @@ services:
   pocketbase:
     build: ./pocketbase
     container_name: beerwalk-pocketbase
-    restart: unless-stopped
+    # "always" y no "unless-stopped": si macOS mata Docker Desktop por memoria,
+    # unless-stopped NO relanza los contenedores al volver el daemon; always sí.
+    restart: always
     ports:
       - "8090:8090"
     volumes:
@@ -30,13 +32,28 @@ services:
   ocr:
     build: ./modulo-ocr
     container_name: beerwalk-ocr
-    restart: unless-stopped
+    # "always" y no "unless-stopped": si macOS mata Docker Desktop por memoria,
+    # unless-stopped NO relanza los contenedores al volver el daemon; always sí.
+    restart: always
     ports:
       - "8000:8000"
     environment:
       - POCKETBASE_URL=${POCKETBASE_URL_INTERNAL:-http://pocketbase:8090}
       - OCR_LANG=${OCR_LANG:-es}
       - MATCH_THRESHOLD=${MATCH_THRESHOLD:-78}
+      # Enriquecimiento web automático (se auto-desactiva si faltan las keys)
+      - ENRICH_ENABLED=${ENRICH_ENABLED:-1}
+      - ENRICH_MIN_CONFIDENCE=${ENRICH_MIN_CONFIDENCE:-0.85}
+      - ENRICH_MAX_ITEMS_PER_SCAN=${ENRICH_MAX_ITEMS_PER_SCAN:-5}
+      - PB_SERVICE_EMAIL=${PB_ADMIN_EMAIL:-}
+      - PB_SERVICE_PASSWORD=${PB_ADMIN_PASSWORD:-}
+      - SEARXNG_URL=${SEARXNG_URL_INTERNAL:-http://searxng:8080}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+      # Refuerzo Gemini Vision (pipeline híbrido; solo cuando PaddleOCR falla)
+      - VISION_ENABLED=${VISION_ENABLED:-1}
+      - VISION_UNMATCHED_RATIO=${VISION_UNMATCHED_RATIO:-0.4}
+      - VISION_MIN_AVG_CONFIDENCE=${VISION_MIN_AVG_CONFIDENCE:-0.75}
     volumes:
       # Cache de modelos PaddleOCR para no re-descargar en cada rebuild
       - ocr_models:/root/.paddleocr
@@ -44,10 +61,31 @@ services:
       pocketbase:
         condition: service_healthy
 
+  searxng:
+    image: searxng/searxng:latest
+    container_name: beerwalk-searxng
+    # "always" y no "unless-stopped": si macOS mata Docker Desktop por memoria,
+    # unless-stopped NO relanza los contenedores al volver el daemon; always sí.
+    restart: always
+    ports:
+      - "8888:8080"
+    environment:
+      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-http://localhost:8888/}
+    volumes:
+      # settings.yml habilita la API JSON (format=json) que usa el módulo OCR
+      - ./searxng:/etc/searxng
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   libretranslate:
     image: libretranslate/libretranslate:latest
     container_name: beerwalk-translate
-    restart: unless-stopped
+    # "always" y no "unless-stopped": si macOS mata Docker Desktop por memoria,
+    # unless-stopped NO relanza los contenedores al volver el daemon; always sí.
+    restart: always
     ports:
       - "5000:5000"
     environment:

@@ -1,0 +1,17 @@
+# SearxNG para BeerWalk — solo motor de búsqueda interno (API JSON).
+# La UI web queda accesible en el puerto mapeado pero no se usa.
+use_default_settings: true
+
+server:
+  # Solo accesible dentro de la red docker / localhost; no exponer a internet
+  # sin cambiar esta clave y activar el limiter.
+  secret_key: "beerwalk-local-cambiame-en-produccion"
+  # El limiter (anti-bots) requiere Redis y bloquearía las llamadas del módulo
+  # OCR; innecesario en una instancia interna no expuesta.
+  limiter: false
+
+search:
+  # "json" NO viene habilitado por defecto: sin esto, /search?format=json → 403
+  formats:
+    - html
+    - json

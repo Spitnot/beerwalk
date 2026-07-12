@@ -1,6 +1,6 @@
 [
   {
-    "id": "bwusers00000001",
+    "id": "_pb_users_auth_",
     "name": "users",
     "type": "auth",
     "listRule": "id = @request.auth.id",
@@ -9,15 +9,28 @@
     "updateRule": "id = @request.auth.id",
     "deleteRule": "id = @request.auth.id",
     "fields": [
-      { "name": "display_name", "type": "text", "required": false },
+      {
+        "name": "display_name",
+        "type": "text",
+        "required": false
+      },
       {
         "name": "role",
         "type": "select",
         "required": true,
         "maxSelect": 1,
-        "values": ["aficionado", "bar", "cervecera", "admin"]
+        "values": [
+          "aficionado",
+          "bar",
+          "cervecera",
+          "admin"
+        ]
       },
-      { "name": "device_id", "type": "text", "required": false }
+      {
+        "name": "device_id",
+        "type": "text",
+        "required": false
+      }
     ]
   },
   {
@@ -30,17 +43,50 @@
     "updateRule": "@request.auth.role = 'admin'",
     "deleteRule": "@request.auth.role = 'admin'",
     "fields": [
-      { "name": "name", "type": "text", "required": true },
-      { "name": "origin", "type": "text", "required": false },
-      { "name": "verified", "type": "bool", "required": false },
-      { "name": "source", "type": "text", "required": false },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "origin",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "verified",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "source",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "source_url",
+        "type": "text",
+        "required": false
+      },
       {
         "name": "claimed_by",
         "type": "relation",
         "required": false,
-        "collectionId": "bwusers00000001",
+        "collectionId": "_pb_users_auth_",
         "maxSelect": 1,
         "cascadeDelete": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
       }
     ]
   },
@@ -54,9 +100,210 @@
     "updateRule": "@request.auth.role = 'admin'",
     "deleteRule": "@request.auth.role = 'admin'",
     "fields": [
-      { "name": "name", "type": "text", "required": true },
-      { "name": "category", "type": "text", "required": false },
-      { "name": "description", "type": "text", "required": false }
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "category",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
+    ]
+  },
+  {
+    "id": "bwbeers00000001",
+    "name": "beers",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "@request.auth.role = 'admin'",
+    "updateRule": "@request.auth.role = 'admin'",
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "brewery",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwbreweries0001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      {
+        "name": "style",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwstyles0000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      {
+        "name": "abv",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "source_url",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "source",
+        "type": "select",
+        "required": false,
+        "maxSelect": 1,
+        "values": [
+          "manual",
+          "seed",
+          "auto-web"
+        ]
+      },
+      {
+        "name": "image_url",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
+    ]
+  },
+  {
+    "id": "bwenrichments01",
+    "name": "enrichments",
+    "type": "base",
+    "listRule": "",
+    "viewRule": "",
+    "createRule": "@request.auth.role = 'admin'",
+    "updateRule": "@request.auth.role = 'admin'",
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      {
+        "name": "enrichment_id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "status",
+        "type": "select",
+        "required": true,
+        "maxSelect": 1,
+        "values": [
+          "created",
+          "no_match",
+          "error"
+        ]
+      },
+      {
+        "name": "beer",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwbeers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      {
+        "name": "detail",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
+    ]
+  },
+  {
+    "id": "bwocrmetrics001",
+    "name": "ocr_metrics",
+    "type": "base",
+    "listRule": "@request.auth.role = 'admin'",
+    "viewRule": "@request.auth.role = 'admin'",
+    "createRule": "@request.auth.role = 'admin'",
+    "updateRule": null,
+    "deleteRule": "@request.auth.role = 'admin'",
+    "fields": [
+      {
+        "name": "vision_used",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "reason",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "unmatched_ratio",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "avg_confidence",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "prompt_tokens",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "output_tokens",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      }
     ]
   },
   {
@@ -69,15 +316,31 @@
     "updateRule": "@request.auth.role = 'admin' || claimed_by = @request.auth.id",
     "deleteRule": "@request.auth.role = 'admin'",
     "fields": [
-      { "name": "name", "type": "text", "required": true },
-      { "name": "lat", "type": "number", "required": true },
-      { "name": "lng", "type": "number", "required": true },
-      { "name": "address", "type": "text", "required": false },
+      {
+        "name": "name",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "lat",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "lng",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "address",
+        "type": "text",
+        "required": false
+      },
       {
         "name": "created_by",
         "type": "relation",
         "required": false,
-        "collectionId": "bwusers00000001",
+        "collectionId": "_pb_users_auth_",
         "maxSelect": 1,
         "cascadeDelete": false
       },
@@ -85,9 +348,21 @@
         "name": "claimed_by",
         "type": "relation",
         "required": false,
-        "collectionId": "bwusers00000001",
+        "collectionId": "_pb_users_auth_",
         "maxSelect": 1,
         "cascadeDelete": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
       }
     ]
   },
@@ -109,17 +384,43 @@
         "maxSelect": 1,
         "cascadeDelete": false
       },
-      { "name": "image", "type": "file", "required": false, "maxSelect": 1, "maxSize": 10485760 },
-      { "name": "raw_ocr_json", "type": "json", "required": false },
+      {
+        "name": "image",
+        "type": "file",
+        "required": false,
+        "maxSelect": 1,
+        "maxSize": 10485760
+      },
+      {
+        "name": "raw_ocr_json",
+        "type": "json",
+        "required": false
+      },
       {
         "name": "created_by",
         "type": "relation",
         "required": false,
-        "collectionId": "bwusers00000001",
+        "collectionId": "_pb_users_auth_",
         "maxSelect": 1,
         "cascadeDelete": false
       },
-      { "name": "device_id", "type": "text", "required": false }
+      {
+        "name": "device_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
     ]
   },
   {
@@ -156,9 +457,46 @@
         "maxSelect": 1,
         "cascadeDelete": false
       },
-      { "name": "beer_name", "type": "text", "required": false },
-      { "name": "confidence", "type": "number", "required": false },
-      { "name": "corrected_by_user", "type": "bool", "required": false }
+      {
+        "name": "beer",
+        "type": "relation",
+        "required": false,
+        "collectionId": "bwbeers00000001",
+        "maxSelect": 1,
+        "cascadeDelete": false
+      },
+      {
+        "name": "beer_name",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "enrichment_id",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "confidence",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "corrected_by_user",
+        "type": "bool",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
     ]
   },
   {
@@ -175,7 +513,7 @@
         "name": "user",
         "type": "relation",
         "required": true,
-        "collectionId": "bwusers00000001",
+        "collectionId": "_pb_users_auth_",
         "maxSelect": 1,
         "cascadeDelete": true
       },
@@ -184,11 +522,40 @@
         "type": "select",
         "required": true,
         "maxSelect": 1,
-        "values": ["bar", "beer"]
+        "values": [
+          "bar",
+          "beer"
+        ]
       },
-      { "name": "target_id", "type": "text", "required": true },
-      { "name": "score", "type": "number", "required": true, "min": 1, "max": 5 },
-      { "name": "comment", "type": "text", "required": false }
+      {
+        "name": "target_id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "score",
+        "type": "number",
+        "required": true,
+        "min": 1,
+        "max": 5
+      },
+      {
+        "name": "comment",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
     ]
   },
   {
@@ -205,7 +572,7 @@
         "name": "user",
         "type": "relation",
         "required": true,
-        "collectionId": "bwusers00000001",
+        "collectionId": "_pb_users_auth_",
         "maxSelect": 1,
         "cascadeDelete": true
       },
@@ -214,9 +581,28 @@
         "type": "select",
         "required": true,
         "maxSelect": 1,
-        "values": ["bar", "brewery"]
+        "values": [
+          "bar",
+          "brewery"
+        ]
       },
-      { "name": "target_id", "type": "text", "required": true }
+      {
+        "name": "target_id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
     ]
   },
   {
@@ -229,10 +615,38 @@
     "updateRule": null,
     "deleteRule": "@request.auth.role = 'admin'",
     "fields": [
-      { "name": "content_type", "type": "text", "required": true },
-      { "name": "content_id", "type": "text", "required": true },
-      { "name": "lang", "type": "text", "required": true },
-      { "name": "text", "type": "text", "required": true }
+      {
+        "name": "content_type",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "content_id",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "lang",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "text",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "created",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": false
+      },
+      {
+        "name": "updated",
+        "type": "autodate",
+        "onCreate": true,
+        "onUpdate": true
+      }
     ]
   }
 ]

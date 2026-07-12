@@ -74,3 +74,4 @@ if __name__ == "__main__":
             sys.exit(f"No se pudo autenticar contra PocketBase: {e}")
         seed(client, args.url, "breweries", "breweries_es.json", token)
         seed(client, args.url, "styles", "styles.json", token)
+        seed(client, args.url, "bars", "bars_demo.json", token)
