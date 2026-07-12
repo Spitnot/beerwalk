@@ -10,8 +10,16 @@ export interface ScanItem {
   line: string;
   brewery: MatchedEntity | null;
   style: MatchedEntity | null;
+  /** Cerveza del catálogo `beers` si el bloque matcheó una ficha completa */
+  beer?: MatchedEntity | null;
   beer_name: string | null;
+  /** Precio leído en la pizarra (solo lo extrae el refuerzo Gemini Vision) */
+  price?: string | null;
   confidence: number;
+  /** Quién leyó este bloque: "paddle" (por defecto) o "vision" (refuerzo) */
+  source?: string;
+  /** UUID si la línea disparó enriquecimiento web en background (ver collection `enrichments`) */
+  enrichment_id?: string | null;
 }
 
 /** Sube la foto de la pizarra al microservicio OCR */

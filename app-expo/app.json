@@ -7,12 +7,23 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "ios": { "supportsTablet": false, "bundleIdentifier": "app.beerwalk" },
-    "android": { "package": "app.beerwalk" },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.beerwalk"
+    },
+    "android": {
+      "package": "app.beerwalk"
+    },
     "plugins": [
       "expo-router",
-      ["expo-camera", { "cameraPermission": "BeerWalk usa la cámara para escanear pizarras de cerveza." }],
-      "expo-secure-store"
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "BeerWalk usa la cámara para escanear pizarras de cerveza."
+        }
+      ],
+      "expo-secure-store",
+      "expo-asset"
     ]
   }
 }

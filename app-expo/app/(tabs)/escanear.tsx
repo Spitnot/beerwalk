@@ -11,27 +11,34 @@ export default function Escanear() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUri, setLastUri] = useState<string | null>(null);
+
+  // Si el OCR falla NO se navega ni se muestra nada de ejemplo: un fallo aquí
+  // nunca debe poder acabar guardado en PocketBase como si fuera un scan real.
+  async function analyze(uri: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await scanBoard(uri);
+      setLastUri(null);
+      router.push({
+        pathname: "/scan-resultado",
+        params: { payload: JSON.stringify(data.items), imageUri: uri },
+      });
+    } catch (e: any) {
+      setLastUri(uri);
+      setError(`No se pudo analizar la pizarra: ${e?.message ?? String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function pickAndScan(fromCamera: boolean) {
     setError(null);
     const fn = fromCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
     const result = await fn({ quality: 0.8 });
     if (result.canceled) return;
-    setBusy(true);
-    try {
-      const uri = result.assets[0].uri;
-      const data = await scanBoard(uri);
-      router.push({
-        pathname: "/scan-resultado",
-        params: { payload: JSON.stringify(data.items), imageUri: uri },
-      });
-    } catch (e) {
-      // Si el backend no está levantado, seguimos con mocks para poder diseñar
-      setError("No se pudo contactar con el OCR. Abriendo resultado de ejemplo…");
-      setTimeout(() => router.push({ pathname: "/scan-resultado", params: { mock: "1" } }), 800);
-    } finally {
-      setBusy(false);
-    }
+    await analyze(result.assets[0].uri);
   }
 
   return (
@@ -57,7 +64,19 @@ export default function Escanear() {
           </Pressable>
         </View>
       )}
-      {error && <Text style={{ ...type.soft, color: palette.danger, marginTop: spacing(3) }}>{error}</Text>}
+      {error && (
+        <View style={{ marginTop: spacing(3), gap: spacing(2) }}>
+          <Text style={{ ...type.soft, color: palette.danger }}>{error}</Text>
+          {lastUri && !busy && (
+            <Pressable
+              onPress={() => analyze(lastUri)}
+              style={{ borderWidth: 1, borderColor: palette.danger, borderRadius: radius.lg, padding: spacing(3), alignItems: "center" }}
+            >
+              <Text style={{ fontWeight: "800", color: palette.danger }}>Reintentar con la misma foto</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
     </Screen>
   );
 }

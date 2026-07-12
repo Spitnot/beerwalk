@@ -1,6 +1,16 @@
+import { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Redirect } from "expo-router";
 
-// TODO: leer flag "onboarding_done" de AsyncStorage y decidir destino
 export default function Index() {
-  return <Redirect href="/onboarding" />;
+  const [done, setDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem("onboarding_done")
+      .then((v) => setDone(v === "1"))
+      .catch(() => setDone(false));
+  }, []);
+
+  if (done === null) return null; // leyendo el flag: no redirigir todavía
+  return <Redirect href={done ? "/(tabs)/home" : "/onboarding"} />;
 }
