@@ -5,8 +5,8 @@
     "type": "auth",
     "listRule": "id = @request.auth.id",
     "viewRule": "id = @request.auth.id",
-    "createRule": "",
-    "updateRule": "id = @request.auth.id",
+    "createRule": "@request.body.role = \"aficionado\"",
+    "updateRule": "(id = @request.auth.id && @request.body.role:isset = false) || @request.auth.role = \"admin\"",
     "deleteRule": "id = @request.auth.id",
     "fields": [
       {
@@ -39,7 +39,7 @@
     "type": "base",
     "listRule": "",
     "viewRule": "",
-    "createRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.role = 'admin'",
     "updateRule": "@request.auth.role = 'admin'",
     "deleteRule": "@request.auth.role = 'admin'",
     "fields": [
@@ -50,6 +50,11 @@
       },
       {
         "name": "origin",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "description",
         "type": "text",
         "required": false
       },
@@ -167,6 +172,11 @@
       },
       {
         "name": "description",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "tasting_notes",
         "type": "text",
         "required": false
       },
@@ -299,6 +309,11 @@
         "required": false
       },
       {
+        "name": "bar_id",
+        "type": "text",
+        "required": false
+      },
+      {
         "name": "created",
         "type": "autodate",
         "onCreate": true,
@@ -313,8 +328,8 @@
     "listRule": "",
     "viewRule": "",
     "createRule": "",
-    "updateRule": "@request.auth.role = 'admin' || claimed_by = @request.auth.id",
-    "deleteRule": "@request.auth.role = 'admin'",
+    "updateRule": "@request.auth.id != '' && (created_by = @request.auth.id || claimed_by = @request.auth.id || @request.auth.role = 'admin')",
+    "deleteRule": "@request.auth.id != '' && (created_by = @request.auth.id || @request.auth.role = 'admin')",
     "fields": [
       {
         "name": "name",
@@ -373,8 +388,8 @@
     "listRule": "",
     "viewRule": "",
     "createRule": "",
-    "updateRule": "@request.auth.role = 'admin' || created_by = @request.auth.id",
-    "deleteRule": "@request.auth.role = 'admin'",
+    "updateRule": "@request.auth.id != '' && (created_by = @request.auth.id || @request.auth.role = 'admin' || (created_by = '' && device_id = @request.body.device_id && @request.body.created_by = @request.auth.id))",
+    "deleteRule": "@request.auth.id != '' && (created_by = @request.auth.id || @request.auth.role = 'admin')",
     "fields": [
       {
         "name": "bar",
@@ -430,8 +445,8 @@
     "listRule": "",
     "viewRule": "",
     "createRule": "",
-    "updateRule": "",
-    "deleteRule": "@request.auth.role = 'admin'",
+    "updateRule": "@request.auth.id != '' && (scan.created_by = @request.auth.id || @request.auth.role = 'admin')",
+    "deleteRule": "@request.auth.id != '' && (scan.created_by = @request.auth.id || @request.auth.role = 'admin')",
     "fields": [
       {
         "name": "scan",

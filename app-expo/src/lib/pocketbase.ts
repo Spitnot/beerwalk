@@ -23,7 +23,13 @@ export async function claimGuestScans(deviceId: string) {
   });
   await Promise.all(
     scans.map((s) =>
-      pb.collection("scans").update(s.id, { created_by: pb.authStore.record!.id })
+      // device_id en el body = prueba de posesión: la regla de scans solo
+      // permite reclamar un scan sin dueño si presentas su device_id y te
+      // lo asignas a ti mismo (evita que cualquier logueado reclame scans ajenos)
+      pb.collection("scans").update(s.id, {
+        created_by: pb.authStore.record!.id,
+        device_id: deviceId,
+      })
     )
   );
 }
