@@ -3,14 +3,47 @@ import { ActivityIndicator, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { StyleBadge } from "@/components/StyleBadge";
+import { StyleStats } from "@/components/StyleStats";
 import { palette, radius, spacing, type } from "@/theme";
 import { pb } from "@/lib/pocketbase";
+import { BJCP_DISCLAIMER, type StyleBjcp } from "@/lib/bjcp";
 
-interface StyleRec {
+interface StyleRec extends StyleBjcp {
   id: string;
   name: string;
   category: string;
   description: string;
+}
+
+const PROFILE_LABELS: [keyof StyleBjcp, string][] = [
+  ["aroma_profile", "Aroma"],
+  ["appearance_profile", "Aspecto"],
+  ["flavor_profile", "Sabor"],
+  ["mouthfeel_profile", "En boca"],
+];
+
+/** Nota discreta de atribución de la guía BJCP (al pie del detalle de estilo) */
+function BjcpNote() {
+  return (
+    <Text style={{ ...type.soft, fontSize: 11, marginTop: spacing(4), lineHeight: 15 }}>
+      {BJCP_DISCLAIMER}
+    </Text>
+  );
+}
+
+function StyleProfiles({ style }: { style: StyleBjcp }) {
+  const rows = PROFILE_LABELS.filter(([key]) => style[key]);
+  if (rows.length === 0) return null;
+  return (
+    <View style={{ gap: spacing(1), marginTop: spacing(2) }}>
+      {rows.map(([key, label]) => (
+        <Text key={key} style={type.body}>
+          <Text style={{ fontWeight: "800" }}>{label}: </Text>
+          {String(style[key])}
+        </Text>
+      ))}
+    </View>
+  );
 }
 
 interface BreweryRec {
@@ -87,13 +120,28 @@ export default function CervezaDetail() {
   if (styleOnly) {
     return (
       <Screen title={styleOnly.name}>
-        <StyleBadge name={styleOnly.name} category={styleOnly.category} />
-        {styleOnly.category ? (
-          <Text style={{ ...type.soft, marginTop: spacing(2) }}>Familia: {styleOnly.category}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <StyleBadge name={styleOnly.name} category={styleOnly.category} />
+          {styleOnly.bjcp_category ? (
+            <Text style={type.soft}>BJCP {styleOnly.bjcp_category}</Text>
+          ) : null}
+        </View>
+        {styleOnly.family ? (
+          <Text style={{ ...type.soft, marginTop: spacing(2) }}>Familia: {styleOnly.family}</Text>
         ) : null}
+        <View style={{ marginTop: spacing(3) }}>
+          <StyleStats style={styleOnly} />
+        </View>
         <Text style={{ ...type.body, marginTop: spacing(3) }}>
-          {styleOnly.description || PENDING}
+          {styleOnly.overall_impression || styleOnly.description || PENDING}
         </Text>
+        <StyleProfiles style={styleOnly} />
+        {styleOnly.commercial_examples ? (
+          <Text style={{ ...type.soft, marginTop: spacing(3) }}>
+            Referencias del estilo: {styleOnly.commercial_examples}
+          </Text>
+        ) : null}
+        <BjcpNote />
       </Screen>
     );
   }
@@ -147,10 +195,13 @@ export default function CervezaDetail() {
       </Section>
 
       {style ? (
-        <Section title={`Estilo · ${style.name}`}>
-          <Text style={type.body}>{style.description || PENDING}</Text>
+        <Section title={`Estilo · ${style.name}${style.bjcp_category ? ` (BJCP ${style.bjcp_category})` : ""}`}>
+          <StyleStats style={style} />
+          <Text style={type.body}>{style.overall_impression || style.description || PENDING}</Text>
+          <StyleProfiles style={style} />
         </Section>
       ) : null}
+      {style ? <BjcpNote /> : null}
     </Screen>
   );
 }

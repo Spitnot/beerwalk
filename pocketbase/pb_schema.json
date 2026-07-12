@@ -121,6 +121,86 @@
         "required": false
       },
       {
+        "name": "bjcp_category",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "overall_impression",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "aroma_profile",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "appearance_profile",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "flavor_profile",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "mouthfeel_profile",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "abv_min",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "abv_max",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ibu_min",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "ibu_max",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "srm_min",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "srm_max",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "commercial_examples",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "family",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "family_order",
+        "type": "number",
+        "required": false
+      },
+      {
+        "name": "style_order",
+        "type": "number",
+        "required": false
+      },
+      {
         "name": "created",
         "type": "autodate",
         "onCreate": true,
