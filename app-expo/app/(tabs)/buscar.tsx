@@ -2,11 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { Link } from "expo-router";
 import { Screen } from "@/components/Screen";
-import { BarCard } from "@/components/BarCard";
 import { StyleBadge } from "@/components/StyleBadge";
 import { palette, radius, spacing, type } from "@/theme";
 import { pb } from "@/lib/pocketbase";
-import { mockBars } from "@/mocks";
 import type { StyleBjcp } from "@/lib/bjcp";
 
 interface StyleRow extends StyleBjcp {
@@ -21,11 +19,18 @@ interface BreweryRow {
   origin: string;
 }
 
+interface BarRow {
+  id: string;
+  name: string;
+  address: string;
+}
+
 export default function Buscar() {
   const [q, setQ] = useState("");
   const [styles, setStyles] = useState<StyleRow[]>([]);
   const [breweries, setBreweries] = useState<BreweryRow[]>([]);
   const [beerCounts, setBeerCounts] = useState<Record<string, number>>({});
+  const [bars, setBars] = useState<BarRow[]>([]);
 
   useEffect(() => {
     // Orden editorial del catálogo BJCP: familias entre sí y estilos dentro
@@ -44,6 +49,11 @@ export default function Buscar() {
       .getFullList<BreweryRow>({ sort: "name", fields: "id,name,origin", requestKey: null })
       .then(setBreweries)
       .catch(() => setBreweries([]));
+    // Bares reales (los demo + los creados desde la app)
+    pb.collection("bars")
+      .getFullList<BarRow>({ sort: "name", fields: "id,name,address", requestKey: null })
+      .then(setBars)
+      .catch(() => setBars([]));
     // Conteo de cervezas por cervecera: una sola lectura del catálogo `beers`
     // (pequeño y solo campo brewery), agregada en cliente — sin N+1
     pb.collection("beers")
@@ -88,7 +98,17 @@ export default function Buscar() {
       : breweries;
   }, [q, breweries]);
 
-  const barResults = mockBars.filter((b) => b.name.toLowerCase().includes(q.toLowerCase()));
+  // Texto libre sobre nombre o dirección, mismo criterio que cerveceras
+  const barResults = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return needle
+      ? bars.filter(
+          (b) =>
+            b.name.toLowerCase().includes(needle) ||
+            (b.address ?? "").toLowerCase().includes(needle)
+        )
+      : bars;
+  }, [q, bars]);
 
   return (
     <Screen title="Buscar">
@@ -175,8 +195,22 @@ export default function Buscar() {
       {barResults.length > 0 && (
         <Text style={{ ...type.soft, fontWeight: "800", marginBottom: spacing(2) }}>BARES</Text>
       )}
-      {barResults.map((bar) => (
-        <BarCard key={bar.id} bar={bar} />
+      {barResults.map((b) => (
+        <Link key={b.id} href={`/bar/${b.id}`} asChild>
+          <Pressable
+            style={{
+              backgroundColor: palette.surface,
+              borderWidth: 1,
+              borderColor: palette.line,
+              borderRadius: radius.md,
+              padding: spacing(3),
+              marginBottom: spacing(2),
+            }}
+          >
+            <Text style={{ ...type.body, fontWeight: "800" }} numberOfLines={1}>{b.name}</Text>
+            {b.address ? <Text style={type.soft} numberOfLines={1}>{b.address}</Text> : null}
+          </Pressable>
+        </Link>
       ))}
     </Screen>
   );
