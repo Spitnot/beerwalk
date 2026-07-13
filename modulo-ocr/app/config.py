@@ -4,6 +4,9 @@ POCKETBASE_URL = os.getenv("POCKETBASE_URL", "http://localhost:8090")
 OCR_LANG = os.getenv("OCR_LANG", "es")
 # Umbral rapidfuzz (0-100) por debajo del cual un match se descarta
 MATCH_THRESHOLD = int(os.getenv("MATCH_THRESHOLD", "78"))
+# Fase 1 del desempate: tolerancia (puntos porcentuales) del filtro de ABV.
+# Banda acordada 0,3-0,5; 0.4 como punto medio.
+ABV_TOLERANCE = float(os.getenv("ABV_TOLERANCE", "0.4"))
 # Fallback local si PocketBase no responde (útil para tests aislados)
 LOCAL_DICT_PATH = os.getenv(
     "LOCAL_DICT_PATH", os.path.join(os.path.dirname(__file__), "..", "tests", "fixtures")

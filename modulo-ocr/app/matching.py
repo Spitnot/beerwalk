@@ -9,12 +9,21 @@ Estrategia MVP, deliberadamente simple:
 """
 from rapidfuzz import fuzz, process, utils
 
-from .config import MATCH_THRESHOLD
+from .abv import extract_abv
+from .config import ABV_TOLERANCE, MATCH_THRESHOLD
 from .schemas import MatchedEntity
 
 
-def _best_match(line: str, dictionary: dict[str, str]) -> MatchedEntity | None:
-    """dictionary: {nombre_canonico: id_pocketbase}"""
+def _best_match(
+    line: str,
+    dictionary: dict[str, str],
+    abv_lookup: dict[str, float | None] | None = None,
+    block_abv: float | None = None,
+) -> MatchedEntity | None:
+    """dictionary: {nombre_canonico: id_pocketbase}
+
+    `abv_lookup`/`block_abv`: Fase 1 del desempate (solo la usa `match_block`
+    para las candidatas de `beers` — breweries/estilos no llevan ABV)."""
     if not dictionary:
         return None
     results = process.extract(
@@ -40,6 +49,26 @@ def _best_match(line: str, dictionary: dict[str, str]) -> MatchedEntity | None:
     ]
     if not results:
         return None
+
+    # Fase 1 del desempate: entre nombres EMPATADOS a la misma puntuación
+    # (donde el criterio de siempre -nombre más largo- es un desempate
+    # arbitrario), preferir el que su ABV de catálogo confirme el ABV leído
+    # en el bloque. Fallo seguro bidireccional: sin ABV limpio en el bloque,
+    # sin ninguna candidata empatada con `abv` registrado, o sin ninguna
+    # dentro de tolerancia, no se descarta nada — sigue el criterio de
+    # siempre sobre el conjunto sin tocar.
+    if abv_lookup and block_abv is not None:
+        top_score = max(r[1] for r in results)
+        tied = [r for r in results if r[1] == top_score]
+        if len(tied) > 1:
+            confirmed = [
+                r for r in tied
+                if abv_lookup.get(r[0]) is not None
+                and abs(abv_lookup[r[0]] - block_abv) <= ABV_TOLERANCE
+            ]
+            if confirmed:
+                results = confirmed
+
     # Con partial_ratio, "IPA" y "Hazy IPA" pueden empatar a 100:
     # ante empate de score, gana el nombre más largo (más específico).
     name, score, _ = max(results, key=lambda r: (r[1], len(r[0])))
@@ -79,15 +108,26 @@ def match_block(
        desempate: elimina la ambigüedad de nombres genéricos y evita
        identidades cruzadas entre cerveceras); sin cervecera, catálogo
        completo pero solo nombres inequívocos.
+       Dentro de este paso, Fase 1 del desempate: si dos candidatas
+       empatan en score, el ABV leído en el bloque (si hay uno limpio)
+       desempata hacia la que confirme el ABV de catálogo.
     3. Fallback: cervecera/estilo sueltos como siempre (match_line).
+       (Fase 3 del desempate —historial de bar— se aplicará aparte,
+       después de este resultado, con el `bar_id` de la petición.)
 
     Devuelve (brewery, style, beer, beer_name).
     """
     brewery_hit = _best_match(text, breweries)
+    block_abv = extract_abv(text)
 
     if beers:
         candidates = beer_candidates(beers, brewery_hit.id if brewery_hit else None)
-        hit = _best_match(text, {n: r["id"] for n, r in candidates.items()}) if candidates else None
+        abv_lookup = {name: rec.get("abv") for name, rec in candidates.items()}
+        hit = (
+            _best_match(text, {n: r["id"] for n, r in candidates.items()},
+                        abv_lookup=abv_lookup, block_abv=block_abv)
+            if candidates else None
+        )
         if hit and hit.name:
             rec = candidates[hit.name]
             brewery = brewery_hit or (

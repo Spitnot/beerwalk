@@ -75,7 +75,7 @@ async def _fetch_beers() -> dict[str, list[dict]]:
                         "page": page,
                         "perPage": 200,
                         "expand": "brewery,style",
-                        "fields": "id,name,expand.brewery.id,expand.brewery.name,"
+                        "fields": "id,name,abv,expand.brewery.id,expand.brewery.name,"
                                   "expand.style.id,expand.style.name",
                     },
                 )
@@ -87,6 +87,7 @@ async def _fetch_beers() -> dict[str, list[dict]]:
                     style = exp.get("style") or {}
                     out.setdefault(item["name"], []).append({
                         "id": item["id"],
+                        "abv": item.get("abv"),
                         "brewery_id": brewery.get("id"),
                         "brewery_name": brewery.get("name"),
                         "style_id": style.get("id"),
