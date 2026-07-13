@@ -17,6 +17,11 @@ export const palette = {
   brandDark: "#C97E1B",
   danger: "#D94F35",
   success: "#3E9C5C",
+  // preview de mapa (Home): antes hardcodeado en el componente
+  mapPreviewBg: "#DCE8DF",
+  // texto oscuro sobre fondo ámbar (botones/pills de brand): patrón ya
+  // repetido suelto en 8+ sitios antes de existir como token
+  onBrand: "#3D2A08",
 };
 
 /** Color protagonista por categoría de estilo (se aplica a badge + card) */

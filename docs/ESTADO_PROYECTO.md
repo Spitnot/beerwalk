@@ -217,14 +217,14 @@ código leído y curl real contra el PocketBase vivo.
 
 | Pantalla | Estado | Detalle |
 |---|---|---|
-| Home (feed) | 🟥 MOCK | "Pizarras recientes" renderiza `mockBars`; el mini-mapa es un placeholder estático que enlaza a Explorar. |
+| Home (feed) | ✅ REAL (cerrado 13-jul, ver §10) | Dos carruseles de descubrimiento con datos reales (`beers`/`scans`); el mini-mapa sigue siendo un placeholder estático que enlaza a Explorar (el Mapa en sí queda fuera de este encargo). |
 | Buscador — estilos | ✅ REAL | Catálogo BJCP de PocketBase con orden editorial por familias (Bloque 2). |
 | Buscador — bares | ✅ REAL (cerrado 13-jul, commit `7ba4e50`) | Mismo patrón que cerveceras: texto libre por nombre/dirección contra `bars` real, `mockBars` fuera de esta pantalla. |
 | Buscador — cerveceras | ✅ REAL (cerrado 13-jul, post-auditoría) | Sección CERVECERAS contra `breweries` real: búsqueda de texto libre por nombre u origen, contador de cervezas en catálogo por cervecera (una sola lectura de `beers` agregada en cliente, sin N+1), y nueva pantalla `cervecera/[id]` (descripción enriquecida o "buscando…" con el patrón del Bloque 4, ficha viva por realtime, y sus cervezas del catálogo enlazando a `cerveza/[id]`, que a su vez enlaza de vuelta). `verified` no se muestra ni filtra (flag interno de admin). `Section` extraída a componente compartido. Verificado con datos reales: "espiga"/"ayinger"/"gara" devuelven las fichas reales del catálogo de 76. |
-| Perfil (estadísticas) | 🟥 MOCK | `mockStats` fijos (23/41/12); el enlace a login/auth sí es real (`isLoggedIn`). |
-| Panel de bar | 🟥 PLACEHOLDER | 3 líneas de texto estático, sin lógica. |
-| Panel de cervecera | 🟥 PLACEHOLDER | 1 línea de texto estático, sin lógica. |
-| Panel de admin | 🟥 PLACEHOLDER | 3 bullets estáticos, sin lógica. |
+| Perfil (estadísticas) | ✅ REAL (cerrado 13-jul, ver §10) | Estadísticas agregadas de verdad sobre `scan_items` propios (invitado vía `device_id`, logueado vía `created_by`) + historial de escaneos propios en lista vertical. |
+| Panel de bar | ✅ REAL (cerrado 13-jul, ver §10) | Reclamar → verificar → histórico, con `claimed_by`/`verified` reales de `bars` (reglas de seguridad ampliadas para permitirlo). |
+| Panel de cervecera | ✅ REAL (cerrado 13-jul, ver §10) | Mismo patrón sobre `breweries`, con formulario de edición básica real (origin/description/source_url). |
+| Panel de admin | ✅ REAL (cerrado 13-jul, ver §10) | Lista real de bares/cerveceras reclamados sin verificar + acción real de verificar + botón real a `POST /dictionary/refresh`. "Duplicados pendientes de fusión" queda explícitamente sin implementar (sin mecanismo de detección real todavía — no se fabricó un dato falso). |
 | Ajustes | 🟨 MIXTO | Idioma/notificaciones/borrar-datos son texto no funcional; la sección "Acerca de" (disclaimer BJCP + enlace) sí es real. |
 | Explorar/mapa | 🟨 MIXTO | Bares desde PocketBase (fallback a mock sin red); MapLibre solo en dev build y el placeholder de Expo Go sigue correcto (check de `appOwnership`, plugin fuera de app.json). |
 | bar/[id], cerveza/[id], scan-resultado | ✅ REAL | PocketBase + realtime del Bloque 4. |
@@ -542,3 +542,111 @@ que en la misma línea el alias de cervecera se muestra corto ("Ayinger")
 mientras el de estilo se muestra canónico ("Hazy IPA"). Servicio `ocr`
 reconstruido y sano (sin ciclos de import entre `matching.py` y
 `dictionary.py`).
+
+## 10. Home, Perfil y paneles con datos reales (13-jul, madrugada)
+
+Las 5 pantallas que quedaban en mock/placeholder tras la auditoría de §6
+(salvo el Mapa, deliberadamente fuera de este encargo) pasan a datos
+reales de PocketBase. Sin referencias visuales disponibles
+(`design-system-reference/` no existe en el repo): se usaron los tokens
+de `theme/index.ts` tal cual, como se pidió explícitamente.
+
+### 10.1 Criterio carrusel vs. lista — decisión por sección
+
+| Pantalla · sección | Decisión | Por qué |
+|---|---|---|
+| Home · "Últimas descubiertas" (`beers` recientes) | Carrusel | Descubrimiento puro: sin jerarquía entre cervezas nuevas, nada pasa si el usuario no ve alguna. |
+| Home · "Actividad cerca" (`scans` recientes) | Carrusel | Mismo motivo: es "qué se está escaneando por ahí", para curiosear, no un registro que auditar. |
+| Perfil · "Tus escaneos" (historial propio) | **Lista vertical** | Es TU propio registro — hay que poder repasarlo entero para saber qué has hecho; ocultar uno por diseño sería perder tu propio historial. |
+| Panel de bar · histórico de pizarras del local | **Lista vertical** | Ya identificado en el encargo original: registro que hay que poder auditar completo. |
+| Panel de admin · pendientes de verificar | **Lista vertical** | Es una cola de moderación: el admin necesita verlas TODAS, ninguna puede quedar oculta tras un swipe. |
+
+Los carruseles usan cards planas sin sombra (ya era el estilo de la app) con
+ancho fijo menor que la pantalla, así la siguiente card asoma cortada en el
+borde — la única pista de que hay más contenido, tal como se pidió.
+
+### 10.2 Hallazgo de seguridad y cambio deliberado (aprobado antes de construir)
+
+Verificado con curl ANTES de tocar código: un usuario normal reclamando un
+bar u una cervecera sin dueño recibía **404** en ambos casos — la regla
+existente solo permitía editar si `claimed_by` YA eras tú, nunca la
+transición inicial "sin reclamar → reclamado por mí" para nadie que no
+fuera admin. `breweries.updateRule` además era admin-only sin excepción, ni
+siquiera un dueño ya reclamado podía editar su propia ficha.
+
+Se amplió `bars.updateRule` y `breweries.updateRule` (schema + PocketBase
+vivo) con un guardarraíl explícito: el reclamante puede fijar `claimed_by`
+en un registro sin dueño y editar sus otros campos, pero **nunca puede
+tocar `verified`** en la misma petición (mismo patrón que ya protege `role`
+en `users`). Verificado con 8 comprobaciones curl reales (reclamar propio
+✅, robar+auto-verificar ajeno ❌, editar tras reclamar ✅, auto-verificarse
+a uno mismo ❌, tercero sin reclamar ❌, admin verificando ✅) — todas con
+el resultado esperado.
+
+### 10.3 Qué se construyó
+
+- **`src/lib/time.ts`**: `relativeEs(iso)`, formato relativo en español
+  reutilizado en Home y Perfil.
+- **`src/lib/useClaimable.ts`**: hook compartido reclamar → verificar para
+  `bars`/`breweries` (misma forma de datos, mismas reglas) — evita
+  duplicar la lógica en los dos paneles.
+- **Home**: carrusel de `beers` recientes (expand brewery+style, ABV) +
+  carrusel de `scans` recientes (expand bar, conteo de items agregado en
+  cliente con el mismo patrón ya usado en Buscador — una sola lectura de
+  `scan_items`, sin N+1).
+- **Perfil**: estadísticas reales (nº de `style`/`brewery`/`bar` distintos
+  agregados sobre los `scan_items` del usuario o invitado) + lista de sus
+  escaneos.
+- **Panel de bar/cervecera**: buscar → reclamar → (pendiente/verificado) →
+  histórico (bar) o formulario de edición (cervecera), con `useClaimable`.
+- **Panel de admin**: lista real de `bars`/`breweries` con
+  `claimed_by != "" && verified = false`, botón real de verificar, y botón
+  real a `POST /dictionary/refresh` del servicio OCR. "Duplicados
+  pendientes de fusión" se deja como sección visible pero explícitamente
+  sin datos (no hay mecanismo de detección real, y no se fabricó uno falso
+  para rellenar el hueco).
+- **`theme/index.ts`**: dos tokens nuevos — `mapPreviewBg` (color de la
+  card de mini-mapa en Home, que ya estaba hardcodeado antes de esta
+  sesión) y `onBrand` (texto oscuro sobre fondo ámbar, patrón que ya se
+  repetía suelto en 8+ sitios del código previo — se promovió a token y se
+  aplicó en los archivos tocados en esta sesión; los 8 sitios preexistentes
+  fuera de este encargo quedan como están, no se tocaron).
+
+### 10.4 Verificación
+
+Sin simulador disponible en esta máquina (limitación ya conocida de
+sesiones anteriores): no hay capturas de pantalla reales. En su lugar,
+verificación equivalente y más estricta —
+replicar EXACTAMENTE las consultas de cada pantalla contra el PocketBase
+real y confirmar que devuelven datos que existen de verdad:
+
+- Home: las 6 `beers` reales del catálogo aparecen en "Últimas
+  descubiertas" (Ayinger Bräuweisse, Blat de Espiga, Simplex...); los 3
+  `scans` reales aparecen en "Actividad cerca" con su conteo de items real
+  (15/11/5 cervezas, verificado contra `scan_items` real).
+- Perfil (invitado con `device_id` real que tiene 2 escaneos genuinos):
+  stats calculados = 9 estilos, 7 cerveceras, 2 bares — verificado a mano
+  contra los 26 `scan_items` reales de esos 2 escaneos.
+- Flujo reclamar → pendiente → verificar probado de punta a punta con
+  escrituras reales (no solo lectura): reclamar aparece en la cola de admin,
+  verificar lo saca de la cola, y `useClaimable` recupera el registro ya
+  verificado — con limpieza posterior de los datos de prueba.
+- `npx tsc --noEmit`: limpio. Bundle de Metro exportado sin errores de
+  import/resolución.
+- `modulo-ocr/tests`: 57/57 siguen en verde (nada de este encargo tocó ese
+  módulo).
+- Grep de hex hardcodeados en los 7 archivos tocados: limpio tras mover
+  `onBrand` y `mapPreviewBg` a `theme/index.ts`.
+
+### 10.5 Pendiente explícito
+
+- **Mapa**: fuera de este encargo, sigue exactamente como estaba.
+- **"Duplicados pendientes de fusión"** en Panel de admin: sin mecanismo
+  real, ver 10.3.
+- Los 8 sitios preexistentes con `"#3D2A08"` suelto (auth.tsx,
+  onboarding.tsx, scan-resultado.tsx, escanear.tsx, buscar.tsx,
+  AbvPill.tsx) no se tocaron — ahora que `palette.onBrand` existe como
+  token, sería un cambio mecánico pendiente para una pasada de limpieza
+  aparte.
+- Validación visual real en dispositivo/simulador sigue pendiente (mismo
+  motivo de siempre: sin entorno disponible en esta máquina).
