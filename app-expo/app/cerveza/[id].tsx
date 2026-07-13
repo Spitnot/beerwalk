@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { Link, useLocalSearchParams } from "expo-router";
 import { Screen } from "@/components/Screen";
+import { Section, PENDING } from "@/components/Section";
 import { StyleBadge } from "@/components/StyleBadge";
 import { StyleStats } from "@/components/StyleStats";
 import { EnrichmentPulse, FadeIn } from "@/components/EnrichmentPulse";
@@ -62,28 +63,6 @@ interface BeerRec {
   description: string;
   tasting_notes: string;
   expand?: { brewery?: BreweryRec; style?: StyleRec };
-}
-
-/** Campo aún sin enriquecer: placeholder explícito, nunca hueco en blanco */
-const PENDING = "Información no disponible todavía";
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View
-      style={{
-        backgroundColor: palette.surface,
-        borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: palette.line,
-        padding: spacing(3),
-        marginTop: spacing(3),
-        gap: 6,
-      }}
-    >
-      <Text style={{ ...type.soft, fontWeight: "800" }}>{title}</Text>
-      {children}
-    </View>
-  );
 }
 
 /**
@@ -240,6 +219,11 @@ export default function CervezaDetail() {
         {brewery ? (
           <>
             {brewery.origin ? <Text style={type.soft}>{brewery.origin}</Text> : null}
+            <Link href={`/cervecera/${brewery.id}`}>
+              <Text style={{ ...type.soft, fontWeight: "800", color: palette.brandDark }}>
+                Ver ficha y todas sus cervezas →
+              </Text>
+            </Link>
             {brewery.description ? (
               <FadeIn key={brewery.description}><Text style={type.body}>{brewery.description}</Text></FadeIn>
             ) : anyPending ? (

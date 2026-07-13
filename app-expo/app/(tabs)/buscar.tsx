@@ -15,9 +15,17 @@ interface StyleRow extends StyleBjcp {
   category: string;
 }
 
+interface BreweryRow {
+  id: string;
+  name: string;
+  origin: string;
+}
+
 export default function Buscar() {
   const [q, setQ] = useState("");
   const [styles, setStyles] = useState<StyleRow[]>([]);
+  const [breweries, setBreweries] = useState<BreweryRow[]>([]);
+  const [beerCounts, setBeerCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     // Orden editorial del catálogo BJCP: familias entre sí y estilos dentro
@@ -30,6 +38,22 @@ export default function Buscar() {
       })
       .then(setStyles)
       .catch(() => setStyles([]));
+    // Catálogo real de cerveceras (Bloque 3). `verified` es un flag interno
+    // de revisión de admin: aquí no se filtra ni se muestra.
+    pb.collection("breweries")
+      .getFullList<BreweryRow>({ sort: "name", fields: "id,name,origin", requestKey: null })
+      .then(setBreweries)
+      .catch(() => setBreweries([]));
+    // Conteo de cervezas por cervecera: una sola lectura del catálogo `beers`
+    // (pequeño y solo campo brewery), agregada en cliente — sin N+1
+    pb.collection("beers")
+      .getFullList<{ brewery: string }>({ fields: "brewery", requestKey: null })
+      .then((rows) => {
+        const counts: Record<string, number> = {};
+        for (const r of rows) if (r.brewery) counts[r.brewery] = (counts[r.brewery] ?? 0) + 1;
+        setBeerCounts(counts);
+      })
+      .catch(() => {});
   }, []);
 
   const styleResults = useMemo(() => {
@@ -51,6 +75,18 @@ export default function Buscar() {
     }
     return families;
   }, [q, styles]);
+
+  // Texto libre sobre nombre u origen, mismo criterio que estilos
+  const breweryResults = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return needle
+      ? breweries.filter(
+          (b) =>
+            b.name.toLowerCase().includes(needle) ||
+            (b.origin ?? "").toLowerCase().includes(needle)
+        )
+      : breweries;
+  }, [q, breweries]);
 
   const barResults = mockBars.filter((b) => b.name.toLowerCase().includes(q.toLowerCase()));
 
@@ -89,6 +125,49 @@ export default function Buscar() {
                 ))}
               </View>
             </View>
+          ))}
+        </View>
+      )}
+
+      {breweryResults.length > 0 && (
+        <View style={{ marginBottom: spacing(4) }}>
+          <Text style={{ ...type.soft, fontWeight: "800", marginBottom: spacing(2) }}>CERVECERAS</Text>
+          {breweryResults.map((b) => (
+            <Link key={b.id} href={`/cervecera/${b.id}`} asChild>
+              <Pressable
+                style={{
+                  backgroundColor: palette.surface,
+                  borderWidth: 1,
+                  borderColor: palette.line,
+                  borderRadius: radius.md,
+                  padding: spacing(3),
+                  marginBottom: spacing(2),
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={{ ...type.body, fontWeight: "800" }} numberOfLines={1}>{b.name}</Text>
+                  {b.origin ? <Text style={type.soft} numberOfLines={1}>{b.origin}</Text> : null}
+                </View>
+                {beerCounts[b.id] ? (
+                  <View
+                    style={{
+                      backgroundColor: palette.brand,
+                      borderRadius: radius.pill,
+                      paddingHorizontal: spacing(2),
+                      paddingVertical: 3,
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "800", color: "#3D2A08" }}>
+                      {beerCounts[b.id]} 🍺
+                    </Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            </Link>
           ))}
         </View>
       )}
