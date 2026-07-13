@@ -19,11 +19,13 @@ def _best_match(
     dictionary: dict[str, str],
     abv_lookup: dict[str, float | None] | None = None,
     block_abv: float | None = None,
+    bar_beer_ids: set[str] | None = None,
 ) -> MatchedEntity | None:
     """dictionary: {nombre_canonico: id_pocketbase}
 
-    `abv_lookup`/`block_abv`: Fase 1 del desempate (solo la usa `match_block`
-    para las candidatas de `beers` — breweries/estilos no llevan ABV)."""
+    `abv_lookup`/`block_abv`: Fase 1 del desempate. `bar_beer_ids`: Fase 3
+    del desempate. Ambas las usa `match_block` solo para las candidatas de
+    `beers` — breweries/estilos no llevan ABV ni historial de bar."""
     if not dictionary:
         return None
     results = process.extract(
@@ -69,6 +71,20 @@ def _best_match(
             if confirmed:
                 results = confirmed
 
+    # Fase 3 del desempate: si TRAS la Fase 1 sigue habiendo empate (la ABV
+    # no lo resolvió, o no había ABV limpio), preferir la candidata que ya
+    # conste en el historial de este bar concreto — set membership simple
+    # sobre scan_items pasados, sin componente posicional todavía. Mismo
+    # fallo seguro: sin historial (bar_id ausente o bar sin escaneos
+    # previos), no se descarta nada y sigue el criterio de siempre.
+    if bar_beer_ids:
+        top_score = max(r[1] for r in results)
+        tied = [r for r in results if r[1] == top_score]
+        if len(tied) > 1:
+            seen_at_bar = [r for r in tied if dictionary[r[0]] in bar_beer_ids]
+            if seen_at_bar:
+                results = seen_at_bar
+
     # Con partial_ratio, "IPA" y "Hazy IPA" pueden empatar a 100:
     # ante empate de score, gana el nombre más largo (más específico).
     name, score, _ = max(results, key=lambda r: (r[1], len(r[0])))
@@ -100,6 +116,7 @@ def match_block(
     breweries: dict[str, str],
     styles: dict[str, str],
     beers: dict[str, list[dict]],
+    bar_beer_ids: set[str] | None = None,
 ) -> tuple[MatchedEntity | None, MatchedEntity | None, MatchedEntity | None, str | None]:
     """Matching de un bloque completo, en cascada:
 
@@ -108,12 +125,14 @@ def match_block(
        desempate: elimina la ambigüedad de nombres genéricos y evita
        identidades cruzadas entre cerveceras); sin cervecera, catálogo
        completo pero solo nombres inequívocos.
-       Dentro de este paso, Fase 1 del desempate: si dos candidatas
-       empatan en score, el ABV leído en el bloque (si hay uno limpio)
-       desempata hacia la que confirme el ABV de catálogo.
+       Dentro de este paso, en cascada:
+         Fase 1 — si dos candidatas empatan en score, el ABV leído en el
+         bloque (si hay uno limpio) desempata hacia la que confirme el
+         ABV de catálogo.
+         Fase 3 — si TRAS la Fase 1 sigue el empate, `bar_beer_ids` (set de
+         beers ya vistas en este bar, resuelto por quien llama con el
+         `bar_id` de la petición) desempata hacia la conocida en ese bar.
     3. Fallback: cervecera/estilo sueltos como siempre (match_line).
-       (Fase 3 del desempate —historial de bar— se aplicará aparte,
-       después de este resultado, con el `bar_id` de la petición.)
 
     Devuelve (brewery, style, beer, beer_name).
     """
@@ -125,7 +144,8 @@ def match_block(
         abv_lookup = {name: rec.get("abv") for name, rec in candidates.items()}
         hit = (
             _best_match(text, {n: r["id"] for n, r in candidates.items()},
-                        abv_lookup=abv_lookup, block_abv=block_abv)
+                        abv_lookup=abv_lookup, block_abv=block_abv,
+                        bar_beer_ids=bar_beer_ids)
             if candidates else None
         )
         if hit and hit.name:

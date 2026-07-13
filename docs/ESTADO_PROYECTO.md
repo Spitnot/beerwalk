@@ -31,7 +31,17 @@ cascada: primero la **cervecera** del bloque (con alias de marca corta:
 "Ayinger" ↔ "Ayinger Privatbrauerei"), después el **catálogo `beers` acotado a
 esa cervecera** (Fase 0 del desempate: evita que un nombre genérico como
 "Blat" se asigne a la cervecera equivocada), y por último estilos sueltos. Los
-nombres genéricos ambiguos sin cervecera clara NO se adivinan.
+nombres genéricos ambiguos sin cervecera clara NO se adivinan. Cuando dos
+candidatas de `beers` empatan en score dentro de esa cervecera, dos fases de
+desempate adicionales entran en cascada (ambas con fallo seguro: si no hay
+dato, no se descarta nada y sigue el criterio de siempre —nombre más largo—):
+**Fase 1**, el ABV leído en el bloque (regex estricta: % o un solo decimal,
+nunca un precio de dos decimales) desempata hacia la candidata cuyo ABV de
+catálogo lo confirme (tolerancia ±0,4 pp); **Fase 3**, si el ABV no resolvió,
+el historial de escaneos de ESE bar (`bar_id` de la detección por
+proximidad) desempata hacia la candidata que ese bar ya sirvió antes (set
+membership sobre `scan_items`, sin componente posicional todavía —eso es la
+Fase 2, sin implementar).
 
 **Refuerzo Vision (condicional).** Si >40% de los bloques quedan sin
 reconocer o la confianza media es baja, UNA llamada a Gemini Vision lee la
@@ -46,11 +56,17 @@ pero sin ficha disparan una tarea: búsqueda en la instancia **SearxNG propia**
 + extracción/corroboración/parafraseo con Gemini, con flujo
 **cervecera-primero** (paso 0: hipótesis de marca del LLM, porque el texto OCR
 destrozado da 0 resultados en buscadores; paso 1: confirmar cervecera y
-completar su ficha; paso 2: la cerveza concreta acotada a esa marca). Si hay
-corroboración clara se publican `brewery`/`beer` con `source="auto-web"`,
-descripción y notas de cata **parafraseadas** y `source_url` de trazabilidad;
-si no, `no_match` y el item queda "sin detectar". La reconciliación con el
-escaneo usa un `enrichment_id` (UUID) que cubre ambos órdenes de llegada.
+completar su ficha; paso 2: la cerveza concreta acotada a esa marca). La
+corroboración del paso 2 NO es un booleano autoevaluado por el LLM: este
+aporta citas literales (`corroborating_quotes`, url + fragmento) y el código
+verifica de forma independiente que cada cita existe tal cual en su página de
+origen y menciona, juntos en el mismo fragmento, la cervecera Y la cerveza —
+exige ≥2 citas verificadas de dominios distintos, o 1 sola si es la web
+oficial ya conocida. Si hay corroboración verificada se publican
+`brewery`/`beer` con `source="auto-web"`, descripción y notas de cata
+**parafraseadas** y `source_url` de trazabilidad; si no, `no_match` y el item
+queda "sin detectar". La reconciliación con el escaneo usa un `enrichment_id`
+(UUID) que cubre ambos órdenes de llegada.
 
 **Guardado.** La respuesta al usuario es inmediata; en `scan-resultado` revisa,
 corrige, elige bar (preseleccionado si la proximidad fue CLARO) y confirma.
@@ -117,41 +133,56 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 | Bloque 3 — seed de cerveceras españolas | ✅ Terminado (13-jul). Verificación legal hecha: Birrapedia y tiendas descartadas (ver decisiones), AECAI + Wikidata como índice. `modulo-datos/seed_breweries_es.py` construido y ejecutado: 59 candidatas procesadas, catálogo en **76 cerveceras** (antes ~18). Idempotente verificado (re-ejecución: 0 creadas, 59 al día), dedupe por nombre normalizado + dominio de source_url, checkpoint incremental (gitignorado), robots.txt por dominio + rate limit 1,5s, guard anti-dominios-expirados (caso real: la web de Dos Dingos sirve un casino chino — su ficha apunta al índice AECAI). Objetivo ~200 NO alcanzado de golpe por diseño: el resto crece orgánicamente vía enriquecimiento. Reglas admin-only verificadas con curl (sin auth 400 / superuser crea+borra). |
 | Bloque 4 — Indicador visual de enriquecimiento en curso (estado `pending` + realtime de PocketBase + UI animada) | ✅ Terminado (13-jul). Backend: `pending` añadido al select de `enrichments` (schema + PB vivo), la tarea lo escribe al arrancar y el resultado final PATCHea ese mismo registro (upsert por `enrichment_id`, nunca dos filas). Frontend: realtime de PocketBase vía SSE (polyfill `react-native-sse`, imprescindible en RN), hook `useEnrichments` (suscripción única filtrada en cliente, cero polling), indicador propio `EnrichmentPulse` (lupa oscilando + puntos "escribiendo" + glow ámbar respirando sobre la card, nada de ActivityIndicator) y transición con fade al resolver. Aplicado en `scan-resultado` (con fusión del resultado en el item), `bar/[id]` (pizarra actual, recarga al resolver) y `cerveza/[id]` (ficha viva suscrita a su beer/brewery; huecos muestran "buscando" si hay enriquecimiento en curso). **Verificado e2e con escaneo real**: 4 tareas emitieron `create: pending` → `update: no_match` por SSE (suscriptor Node con el mismo SDK), y tránsito `pending→created` con relación `beer` verificado aparte. Los 4 bloques originales están completos. |
 | Desempate — Fase 0 (acotado por cervecera) | ✅ Hecha y verificada con la pizarra real |
-| Desempate — Fase 1 (regex ABV con fallo seguro y tolerancia ±0,3-0,5, NUNCA igualdad exacta) | ⏳ Desbloqueada, sin implementar |
-| Desempate — Fase 2 (persistir coordenadas de bloques en scan_items) | ⏳ Sin implementar |
-| Desempate — Fase 3 (historial de bar) | ⏳ Desbloqueada técnicamente (el `bar_id` llega verificado a `/ocr` cuando la proximidad es CLARO; hook TODO en `main.py`), filtro sin implementar |
+| Desempate — Fase 1 (regex ABV con fallo seguro y tolerancia ±0,4, NUNCA igualdad exacta) | ✅ Terminada (13-jul). `app/abv.py` nuevo: exige % o un solo decimal (nunca un precio de dos), rango de cordura 2-20% (descarta volúmenes en litros tipo "0,5L"). Actúa como tie-break DENTRO de `_best_match` solo entre candidatas ya empatadas en score — nunca impone, nunca descarta por ausencia de dato. Verificado con la pizarra real: 0/10 bloques cambian (ninguno de esos textos trae un ABV limpio; comprobado emparejando por similitud de texto, no por índice, porque PaddleOCR no es perfectamente determinista entre ejecuciones) y con tests sintéticos donde el ABV sí decide correctamente entre dos nombres empatados. |
+| Desempate — Fase 2 (persistir coordenadas de bloques en scan_items) | ⏳ Sin implementar (fuera de alcance de esta sesión) |
+| Desempate — Fase 3 (historial de bar) | ✅ Terminada (13-jul). Versión simple acordada: set membership sobre `beer` de `scan_items` pasados de ese `bar_id` (`get_bar_beer_history` en `dictionary.py`, filtro `scan.bar = "X" && beer != ""`), sin componente posicional (eso es Fase 2). Mismo tie-break dentro de `_best_match`, en cascada DESPUÉS de la Fase 1: solo actúa si tras el ABV sigue habiendo empate. Fallo seguro: sin `bar_id` o bar sin historial, no cambia nada. Verificado con datos reales (bar+scan_item creados y borrados contra el PocketBase vivo) y con tests que confirman que la Fase 1 sigue mandando cuando decide, aunque el historial "prefiera" la otra candidata. |
 | Seguridad por rol (12 collections) | ✅ Cerrada y verificada con matriz curl real por rol (incluye fix de auto-escalado a admin y claim seguro por `device_id`) + rate limiting nativo activado |
 | Pipeline híbrido PaddleOCR + Gemini Vision + métricas `ocr_metrics`/`GET /stats` | ✅ Hecho y verificado (foto real de 10 paneles, tokens y coste medidos) |
 
 **Pendientes menores anotados por el camino:**
 
-- **Endurecer el prompt de corroboración del paso 2 del enriquecimiento**: se
-  detectó un falso positivo real ("Capricorn Feat Artesants" corroborada para
-  el hint "Blat" de Espiga). La ficha errónea se eliminó, pero la causa raíz
-  (el listón acepta resultados tangenciales) sigue sin arreglar.
+- ~~Endurecer el prompt de corroboración del paso 2 del enriquecimiento~~ ✅
+  **Arreglado (13-jul)**. El falso positivo real ("Capricorn Feat Artesants"
+  corroborada para el hint "Blat" de Espiga) pasó porque el listón era un
+  booleano autoevaluado por el propio LLM, sin ninguna verificación
+  estructural: una fuente que solo mencionaba el descriptor de estilo
+  ("Blat"=trigo) sin el nombre de la cervecera bastó para que el modelo se
+  autoconvenciera de "≥2 fuentes independientes". Ahora el LLM aporta citas
+  literales y el código verifica en `_verify_corroboration`
+  (`enrichment.py`) que cada una existe tal cual en su página y menciona
+  cervecera+cerveza juntas — ver detalle en §7.
 - Alias de estilos para el matching (una pizarra que dice "NEIPA" no matchea
   la ficha "Hazy IPA"): mecanismo pendiente de diseñar.
-- El juicio "corroborated" del LLM tiene varianza entre ejecuciones (a veces
-  conservador de más). Aceptable por diseño, pero vigilarlo en las métricas.
-- **Duplicado real de beer detectado en un escaneo de prueba (13-jul)**: al
-  retomar Fase 1/Fase 3 del desempate o el listón de corroboración, revisar
-  si la deduplicación de `beers` (hoy: nombre exacto + fuzzy por cervecera en
-  `enrichment.py`) necesita el mismo refuerzo que se aplicó a `breweries`
-  tras el caso del dominio secuestrado (variantes de nombre normalizado +
-  comparación por dominio de source_url). Solo anotado, sin arreglar.
+- El juicio del LLM en el paso 2 (si hay o no citas verificables) puede tener
+  varianza entre ejecuciones. Aceptable por diseño, pero vigilarlo en las
+  métricas ahora que el listón es más estricto.
+- **Duplicado real de beer detectado en un escaneo de prueba (13-jul)**: la
+  deduplicación de `beers` (hoy: nombre exacto + fuzzy por cervecera en
+  `enrichment.py`) puede necesitar el mismo refuerzo que se aplicó a
+  `breweries` tras el caso del dominio secuestrado (variantes de nombre
+  normalizado + comparación por dominio de source_url). Las 3 fases del
+  desempate y el listón de corroboración ya se cerraron esta sesión sin
+  abordar esto — sigue pendiente, sin arreglar.
 - `docs/01-03` anteriores pueden contener detalles desactualizados respecto a
   este documento; este archivo manda.
 
 ## 5. Próximo paso concreto
 
-**Los 4 bloques originales están completos.** Lo siguiente, por orden de
-valor según los pendientes anotados:
+**Los 4 bloques originales Y las 3 fases del desempate abordadas (0, 1, 3)
+están completos, además del arreglo del listón de corroboración.** Lo que
+queda, por orden de valor:
 
-1. **Fase 1 del desempate** (regex ABV con fallo seguro y tolerancia
-   ±0,3-0,5, NUNCA igualdad exacta) — desbloqueada y sin implementar.
-2. **Endurecer el prompt de corroboración** del paso 2 del enriquecimiento
-   (falso positivo real documentado en §4).
-3. Alias de estilos para el matching (NEIPA ↔ Hazy IPA).
+1. **Alias de estilos para el matching** (NEIPA ↔ Hazy IPA) — mecanismo
+   pendiente de diseñar.
+2. **Deduplicación de `beers`** — revisar si necesita el mismo refuerzo que
+   `breweries` (variantes de nombre normalizado + dominio de source_url),
+   a raíz del duplicado real detectado en un escaneo de prueba (§4).
+3. **Fase 2 del desempate** (persistir coordenadas de bloques en
+   `scan_items`, componente posicional) — deliberadamente fuera de alcance
+   hasta ahora; sin implementar.
+4. Vigilar en las métricas si el listón de corroboración más estricto
+   (§7) reduce demasiado la tasa de auto-publicación — el criterio nuevo es
+   honesto pero más exigente; si `no_match` sube mucho, revisar el prompt.
 
 Pendiente de validación en dispositivo (no bloquea): el indicador del
 Bloque 4 está verificado a nivel de datos y suscripción con el mismo SDK de
@@ -189,7 +220,12 @@ código leído y curl real contra el PocketBase vivo.
 | Explorar/mapa | 🟨 MIXTO | Bares desde PocketBase (fallback a mock sin red); MapLibre solo en dev build y el placeholder de Expo Go sigue correcto (check de `appOwnership`, plugin fuera de app.json). |
 | bar/[id], cerveza/[id], scan-resultado | ✅ REAL | PocketBase + realtime del Bloque 4. |
 
-### 6.2 Pipeline — cabos sueltos confirmados
+### 6.2 Pipeline — cabos sueltos confirmados (estado en el momento de la auditoría, 13-jul mañana)
+
+> Todo lo de esta subsección quedó CERRADO más tarde la misma sesión —
+> ver §7 para el detalle de la implementación real. Se deja el texto
+> original de la auditoría sin reescribir, como registro de qué estaba
+> pendiente en ese momento.
 
 - **Fase 1 desempate (ABV)**: NO implementada en ningún momento intermedio —
   cero código de filtro ABV en el matching (el `abv` solo se guarda en fichas
@@ -232,7 +268,7 @@ código leído y curl real contra el PocketBase vivo.
    EnrichmentPulse si aún se enriquece; nunca hueco vacío. `AbvPill` extraído
    a componente compartido (cerveza/cervecera/scan-resultado).
 
-### 6.5 Resumen ejecutivo
+### 6.5 Resumen ejecutivo (momento de la auditoría, 13-jul mañana)
 
 - **Bloques originales: 4/4 terminados al 100%** (1 enriquecimiento, 2 BJCP,
   3 cerveceras, 4 indicador realtime).
@@ -241,3 +277,103 @@ código leído y curl real contra el PocketBase vivo.
 - **A medias / deuda visible**: Home, Buscador de bares, Perfil y los 3
   paneles siguen en mock/placeholder. (La búsqueda de cerveceras, detectada
   como inexistente en esta auditoría, se cerró el mismo 13-jul — ver 6.1.)
+
+> Actualización de la tarde del mismo 13-jul: Fase 1, Fase 3 y el listón de
+> corroboración se implementaron y verificaron — ver §7. El resumen de
+> arriba queda como estaba en el momento de la auditoría; el estado real
+> y actual de las 3 fases está en la tabla de §4.
+
+## 7. Cierre de las 3 fases del desempate + arreglo de corroboración (13-jul, tarde)
+
+Sesión de continuación tras la auditoría de §6: cierre de Fase 1, Fase 3, y
+el pendiente de corroboración que ya se había anotado.
+
+### 7.1 Fase 1 — filtro de ABV
+
+`modulo-ocr/app/abv.py` (nuevo): `extract_abv(text)` exige `%` (entero o un
+decimal) o, sin símbolo, un patrón estricto de UN SOLO decimal —
+`(?<!\d)(\d{1,2}[.,]\d)(?!\d)`. Un precio español ("4,50", dos decimales)
+nunca matchea por el lookahead; un rango de cordura 2-20% descarta además
+volúmenes de servicio en litros ("0,5L") que calzarían el mismo patrón.
+
+En `matching.py`, `_best_match` acepta `abv_lookup`/`block_abv` opcionales:
+si hay empate de score entre candidatas de `beers`, y hay ABV limpio en el
+bloque, se filtra hacia las empatadas cuyo `abv` de catálogo esté a ≤0,4 pp
+(`ABV_TOLERANCE` en `config.py`) — solo si eso deja al menos una candidata;
+si no, no se toca nada (fallo seguro bidireccional). `dictionary.py` ahora
+trae `abv` del catálogo `beers` (campo añadido a `_fetch_beers`).
+
+Verificación: 8 tests nuevos en `test_abv.py` + 4 en `test_matching.py`
+(caso sintético real: "Blat"/"Blanc" empatan a 100 de partial_ratio —
+verificado con rapidfuzz directamente— y sin Fase 1 el criterio de siempre
+elige mal "Blanc"; con ABV de bloque=5,1 elige bien "Blat"). Contra
+`pizarra_rejilla_real.jpeg`: **0/10 bloques cambian** — ninguno de esos
+textos trae un ABV limpio (verificado con `extract_abv` sobre los 10
+textos reales), así que la nueva lógica no tiene ocasión de actuar en esta
+foto concreta; comprobado emparejando por similitud de texto entre dos
+ejecuciones, no por índice, porque PaddleOCR no es perfectamente
+determinista entre corridas (reordena bloques y varía ligeramente el texto).
+
+### 7.2 Fase 3 — historial de bar
+
+Versión simple acordada: set membership, sin componente posicional
+(eso sería Fase 2, sin implementar). `dictionary.py` añade
+`get_bar_beer_history(bar_id)`: pagina `scan_items` filtrando
+`scan.bar = "X" && beer != ""` y devuelve el set de ids de `beer` ya vistos
+en ese bar. Fallo seguro: cualquier error o bar sin escaneos → set vacío.
+
+`main.py` la llama una vez por escaneo cuando hay `bar_id` (proximidad
+CLARO) y pasa el resultado a cada `match_block(..., bar_beer_ids=...)`.
+Dentro de `_best_match`, este historial es un tie-break que actúa EN
+CASCADA DESPUÉS de la Fase 1: si, tras el filtro de ABV, sigue habiendo
+empate de score, se prefiere la candidata cuyo id conste en el historial
+del bar — y solo si al menos una de las empatadas consta (si no, no se
+toca nada).
+
+Verificación: 4 tests nuevos en `test_matching.py`, incluyendo el punto
+crítico pedido — `test_fase1_decide_antes_de_llegar_a_fase3`: con ABV en el
+bloque, la Fase 1 ya resuelve el empate hacia "Blat", y aunque el historial
+del bar "prefiera" a propósito la otra candidata ("Blanc", conflicto
+deliberado), Fase 3 nunca llega a actuar porque el empate ya no existe.
+Además, verificación con datos REALES: bar y `scan_item` creados en el
+PocketBase vivo (Cerveseria La Espuma + Ayinger Bräuweisse), confirmado que
+`get_bar_beer_history()` devuelve el id correcto contra la API real, y
+limpieza posterior de los registros de prueba.
+
+### 7.3 Arreglo del listón de corroboración
+
+Causa raíz confirmada en `enrichment.py`: `"corroborated": bool` era un
+juicio autoevaluado por el propio LLM sin ninguna verificación estructural
+detrás. Con el hint "Blat" (trigo, catalán) para Espiga, la búsqueda trajo
+páginas de OTRA marca ("Capricorn Feat Artesants") que solo mencionaban el
+descriptor de estilo, nunca "Espiga" — y el modelo las contó como "fuentes
+independientes" de esa cerveza sin que nada se lo impidiera.
+
+Arreglo: el LLM ya no declara "corroborado", aporta **evidencia**
+(`corroborating_quotes`: lista de `{url, quote}` con el fragmento LITERAL
+de una de las páginas dadas). `_verify_corroboration` (nueva, en
+`enrichment.py`) audita en código cada cita: (1) debe ser localizable tal
+cual en el texto de la página que dice citar (rechaza invención/paráfrasis);
+(2) debe mencionar, dentro de ese mismo fragmento corto (máx. 300
+caracteres), tanto la marca como el nombre de la cerveza (rechaza fuentes
+tangenciales que solo hablan del estilo/descriptor genérico — exactamente
+el hueco que dejó pasar Capricorn). Sigue exigiendo ≥2 citas verificadas de
+dominios distintos, o 1 sola si su dominio es la web oficial ya conocida de
+la cervecera (`brewery.source_url`, fetch añadido en `_enrich_item_inner`).
+
+Verificación: 8 tests nuevos en `test_corroboration.py`, incluyendo la
+reproducción exacta del patrón Capricorn (se rechaza), dos fuentes
+independientes válidas (corrobora), la web oficial sola (corrobora), una
+fuente no oficial sola (no basta, sin cambios respecto al criterio previo),
+cita inventada/no localizable (se descarta), cita de una URL fuera de las
+páginas dadas (se descarta), cita demasiado larga (se descarta), y **Ayinger**
+(caso real ya enriquecido del Bloque 1) con dos fuentes reales que sí
+mencionan marca+cerveza — confirma que el listón más estricto no rompe lo
+que sí debe pasar.
+
+### 7.4 Estado de los tests
+
+`modulo-ocr/tests`: **44/44 en verde** (22 antes de esta sesión + 6 nuevos
+en `test_abv.py` + 4 de Fase 1 y 4 de Fase 3 en `test_matching.py` + 8 en
+`test_corroboration.py` − ninguno roto). Servicio `ocr` reconstruido y sano
+en cada paso.

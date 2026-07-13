@@ -105,3 +105,67 @@ def test_abv_precio_no_se_confunde_con_grado():
     # el de "Blat" si se leyera mal como "4,5"
     _, _, _, beer_name = match_block("Espiga Blat Blanc 4,50", BREWERIES, STYLES, beers)
     assert beer_name == "Blanc"  # sigue el criterio de siempre, no hay ABV limpio
+
+
+# ── Fase 3 del desempate: historial de bar ──────────────────────────────
+
+def _blat_blanc_beers():
+    # Mismo empate real de "Blat"/"Blanc" (100 de partial_ratio, verificado
+    # con rapidfuzz) usado para probar Fase 1.
+    return {
+        "Blat": [{"id": "beer-blat", "abv": None, "brewery_id": "b3",
+                  "brewery_name": "Espiga", "style_id": None, "style_name": None}],
+        "Blanc": [{"id": "beer-blanc", "abv": None, "brewery_id": "b3",
+                   "brewery_name": "Espiga", "style_id": None, "style_name": None}],
+    }
+
+
+def test_historial_de_bar_desempata_cuando_abv_no_resuelve():
+    beers = _blat_blanc_beers()
+    # Sin ABV en el bloque ni en las fichas: Fase 1 no tiene nada que hacer.
+    # Este bar ya sirvió "Blat" antes (set membership sobre scan_items).
+    _, _, beer, beer_name = match_block(
+        "Espiga Blat Blanc", BREWERIES, STYLES, beers, bar_beer_ids={"beer-blat"}
+    )
+    assert beer_name == "Blat"
+    assert beer and beer.id == "beer-blat"
+
+
+def test_fase1_decide_antes_de_llegar_a_fase3():
+    # Con ABV en el bloque, la Fase 1 YA resuelve el empate hacia "Blat" —
+    # aunque el historial del bar "prefiera" la otra (conflicto deliberado),
+    # Fase 3 nunca debe tener ocasión de actuar: el empate ya no existe.
+    beers = {
+        "Blat": [{"id": "beer-blat", "abv": 5.1, "brewery_id": "b3",
+                  "brewery_name": "Espiga", "style_id": None, "style_name": None}],
+        "Blanc": [{"id": "beer-blanc", "abv": 7.0, "brewery_id": "b3",
+                   "brewery_name": "Espiga", "style_id": None, "style_name": None}],
+    }
+    _, _, beer, beer_name = match_block(
+        "Espiga Blat Blanc 5,1", BREWERIES, STYLES, beers, bar_beer_ids={"beer-blanc"}
+    )
+    assert beer_name == "Blat"  # Fase 1 manda; el historial (Blanc) no la pisa
+    assert beer and beer.id == "beer-blat"
+
+
+def test_sin_bar_id_no_cambia_nada():
+    # Fallo seguro: bar_beer_ids vacío/None (AMBIGUO o SIN_COINCIDENCIA en la
+    # detección de proximidad) se comporta exactamente como sin Fase 3.
+    beers = _blat_blanc_beers()
+    _, _, _, beer_name = match_block("Espiga Blat Blanc", BREWERIES, STYLES, beers)
+    assert beer_name == "Blanc"  # criterio de siempre: nombre más largo
+
+    _, _, _, beer_name_vacio = match_block(
+        "Espiga Blat Blanc", BREWERIES, STYLES, beers, bar_beer_ids=set()
+    )
+    assert beer_name_vacio == "Blanc"
+
+
+def test_historial_de_bar_no_descarta_si_ninguna_candidata_empatada_consta():
+    beers = _blat_blanc_beers()
+    # El bar tiene historial, pero de una cerveza que ni siquiera está entre
+    # las empatadas: no hay nada que preferir, sigue el criterio de siempre.
+    _, _, _, beer_name = match_block(
+        "Espiga Blat Blanc", BREWERIES, STYLES, beers, bar_beer_ids={"beer-de-otra-cerveza"}
+    )
+    assert beer_name == "Blanc"

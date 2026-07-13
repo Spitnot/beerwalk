@@ -101,6 +101,45 @@ async def _fetch_beers() -> dict[str, list[dict]]:
     return out
 
 
+def _pb_filter_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+async def get_bar_beer_history(bar_id: str) -> set[str]:
+    """IDs de `beers` que ya constan en escaneos anteriores de este bar
+    (Fase 3 del desempate: "¿esta candidata ya se ha visto/servido en este
+    bar?"). Set membership simple sobre `scan_items` pasados vía la relación
+    `scan.bar` — sin componente posicional (eso queda para una fase futura).
+
+    Fallo seguro: cualquier fallo (bar sin escaneos, PocketBase caído) da
+    historial vacío, que en el matching equivale a no tener nada que aportar
+    — nunca rompe ni descarta candidatas por su ausencia."""
+    out: set[str] = set()
+    try:
+        bar_id_esc = _pb_filter_escape(bar_id)
+        async with httpx.AsyncClient(timeout=5) as client:
+            page = 1
+            while True:
+                r = await client.get(
+                    f"{POCKETBASE_URL}/api/collections/scan_items/records",
+                    params={
+                        "page": page,
+                        "perPage": 200,
+                        "filter": f'scan.bar = "{bar_id_esc}" && beer != ""',
+                        "fields": "beer",
+                    },
+                )
+                r.raise_for_status()
+                data = r.json()
+                out.update(item["beer"] for item in data["items"] if item.get("beer"))
+                if page >= data["totalPages"]:
+                    break
+                page += 1
+    except Exception:
+        return set()
+    return out
+
+
 def _local_fallback(name: str) -> dict[str, str]:
     path = os.path.join(LOCAL_DICT_PATH, f"{name}_local.json")
     if not os.path.exists(path):

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .blocks import group_lines
 from .config import ENRICH_MAX_ITEMS_PER_SCAN
-from .dictionary import get_dictionaries
+from .dictionary import get_bar_beer_history, get_dictionaries
 from .enrichment import enrich_item, enrichment_configured, should_enrich
 from .matching import match_block
 from .ocr import run_ocr
@@ -79,11 +79,13 @@ async def ocr_endpoint(
 ):
     if image.content_type not in ("image/jpeg", "image/png", "image/webp"):
         raise HTTPException(415, "Formato no soportado (jpeg/png/webp)")
+    # Fase 3 del desempate: historial de beers ya vistas en este bar. Vacío
+    # si no hay bar_id (AMBIGUO/SIN_COINCIDENCIA) o si el bar no tiene
+    # escaneos previos — fallo seguro, el matching sigue igual sin él.
+    bar_beer_ids: set[str] = set()
     if bar_id:
         log.info("escaneo con bar_id=%s (proximidad CLARO)", bar_id)
-        # TODO Fase 3 del desempate: usar bar_id aquí para el filtro de
-        # historial ("¿esta candidata ya se sirvió en este bar?") sobre las
-        # candidatas de match_block. De momento solo se registra su llegada.
+        bar_beer_ids = await get_bar_beer_history(bar_id)
 
     image_bytes = await image.read()
     if len(image_bytes) > 10 * 1024 * 1024:
@@ -99,7 +101,9 @@ async def ocr_endpoint(
         text = block["text"].strip()
         if len(text) < 3:  # ruido: precios sueltos, símbolos...
             continue
-        brewery, style, beer, beer_name = match_block(text, breweries, styles, beers)
+        brewery, style, beer, beer_name = match_block(
+            text, breweries, styles, beers, bar_beer_ids=bar_beer_ids
+        )
         items.append(
             ScanItem(
                 line=text,
