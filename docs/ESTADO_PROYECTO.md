@@ -161,3 +161,60 @@ Notas del Bloque 3 que quedan vivas:
 - El seed es re-ejecutable sin miedo (idempotente en nombre y dominio); si se
   quiere refrescar contra las webs, borrar antes
   `modulo-datos/seed/.breweries_es_checkpoint.json`.
+
+## 6. Auditoría de estado completa (13-jul-2026)
+
+Revisión post-bloques de TODO el frente de app, pipeline y seguridad, con
+código leído y curl real contra el PocketBase vivo.
+
+### 6.1 Pantallas — real vs mock
+
+| Pantalla | Estado | Detalle |
+|---|---|---|
+| Home (feed) | 🟥 MOCK | "Pizarras recientes" renderiza `mockBars`; el mini-mapa es un placeholder estático que enlaza a Explorar. |
+| Buscador — estilos | ✅ REAL | Catálogo BJCP de PocketBase con orden editorial por familias (Bloque 2). |
+| Buscador — bares | 🟥 MOCK | Filtra `mockBars` en cliente. |
+| Buscador — cerveceras | 🟥 NO EXISTE | Ni real ni mock: el input promete "cerveceras" pero no hay sección de resultados (las 76 del catálogo no se pueden buscar). |
+| Perfil (estadísticas) | 🟥 MOCK | `mockStats` fijos (23/41/12); el enlace a login/auth sí es real (`isLoggedIn`). |
+| Panel de bar | 🟥 PLACEHOLDER | 3 líneas de texto estático, sin lógica. |
+| Panel de cervecera | 🟥 PLACEHOLDER | 1 línea de texto estático, sin lógica. |
+| Panel de admin | 🟥 PLACEHOLDER | 3 bullets estáticos, sin lógica. |
+| Ajustes | 🟨 MIXTO | Idioma/notificaciones/borrar-datos son texto no funcional; la sección "Acerca de" (disclaimer BJCP + enlace) sí es real. |
+| Explorar/mapa | 🟨 MIXTO | Bares desde PocketBase (fallback a mock sin red); MapLibre solo en dev build y el placeholder de Expo Go sigue correcto (check de `appOwnership`, plugin fuera de app.json). |
+| bar/[id], cerveza/[id], scan-resultado | ✅ REAL | PocketBase + realtime del Bloque 4. |
+
+### 6.2 Pipeline — cabos sueltos confirmados
+
+- **Fase 1 desempate (ABV)**: NO implementada en ningún momento intermedio —
+  cero código de filtro ABV en el matching (el `abv` solo se guarda en fichas
+  vía enriquecimiento). Sigue solo diseñada.
+- **Fase 3 desempate (historial de bar)**: bloqueada SOLO por implementación.
+  El `bar_id` llega verificado a `/ocr` y el hook TODO está en `main.py`;
+  no hay ningún otro prerequisito pendiente.
+- **Listón de corroboración**: SIN TOCAR. El prompt mantiene el criterio
+  simple ("≥2 fuentes independientes O la web oficial") que causó el falso
+  positivo "Capricorn". Nota: en el escaneo real del 13-jul se comportó
+  conservador (4/4 no_match), la varianza documentada sigue.
+- **Seed de bares OSM/Overpass**: NO implementado — cero referencias en el
+  código. Bares en BD: **3** (los demo originales: La Espuma, El Grifo
+  Dorado, Bar Llúpol).
+
+### 6.3 Seguridad — sin regresiones
+
+- Diff programático reglas vivas ↔ `pb_schema.json`: **0 diferencias** en las
+  12 collections (los cambios de schema de BJCP/cerveceras/pending no tocaron
+  reglas).
+- Spot-checks curl (13-jul): POST `beers` sin auth → 400; PATCH `bars` sin
+  auth → 404 (oculto); signup con `role=admin` → 400 (anti-escalado intacto);
+  invitado crea scan con `device_id` → 200 (fricción cero intacta).
+- Rate limiting nativo: ACTIVO, 5 reglas.
+
+### 6.4 Resumen ejecutivo
+
+- **Bloques originales: 4/4 terminados al 100%** (1 enriquecimiento, 2 BJCP,
+  3 cerveceras, 4 indicador realtime).
+- **Fases del desempate (1-3): 0/3 empezadas** (la Fase 0 previa sí está
+  hecha y verificada; la 3 tiene el terreno preparado con `bar_id` + hook).
+- **A medias / deuda visible**: Home, Buscador (bares y cerveceras), Perfil y
+  los 3 paneles siguen en mock/placeholder; búsqueda de cerveceras ni existe
+  pese a haber ya 76 en catálogo.
