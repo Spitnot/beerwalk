@@ -650,3 +650,72 @@ real y confirmar que devuelven datos que existen de verdad:
   aparte.
 - Validación visual real en dispositivo/simulador sigue pendiente (mismo
   motivo de siempre: sin entorno disponible en esta máquina).
+
+## 11. Guardarraíl completo de "reclamar" en bars/breweries (14-jul)
+
+Cierre de sesión: `main` publicado a `origin` (commit `489af7f`, confirmado
+idéntico local↔remoto). A continuación, endurecimiento del patrón
+reclamar→verificar de §10.2.
+
+### 11.1 Diagnóstico previo
+
+Confirmado leyendo el schema real (no de memoria): `claimed_by`/`verified`
+siguen llamándose así en ambas collections. El modelo de invitado
+(`device_id`, campo de texto plano en `scans`/`scan_items`) es
+estructuralmente independiente del sistema de auth de PocketBase — un
+invitado nunca tiene sesión, así que `@request.auth.id` es siempre `""`
+para él en el servidor. Conclusión: **"reclamar requiere cuenta
+registrada" ya se cumplía de facto** antes de tocar nada (un invitado no
+tiene forma de satisfacer `claimed_by = @request.auth.id` ni
+`@request.body.claimed_by = @request.auth.id`); no hubo que ajustar nada
+para ese criterio ni fue necesario preguntar.
+
+### 11.2 Hueco real encontrado y cerrado
+
+Las reglas de §10.2 ya cerraban: reasignación por un tercero (bloqueada),
+auto-verificación (bloqueada), control total de admin (ya existía). Pero
+**un dueño ya reclamado SÍ podía tocar `claimed_by` en la misma petición**
+(reasignarlo a otro o vaciarlo) — esa rama solo exigía
+`@request.body.verified:isset = false`, nunca protegió `claimed_by`. Se
+cerró añadiendo `@request.body.claimed_by:isset = false` a las dos ramas
+de "ya soy el dueño" (en `bars`, tanto la de `created_by` como la de
+`claimed_by`; en `breweries`, la de `claimed_by`) — mismo patrón exacto ya
+auditado para `role` en `users` (`@request.body.role:isset = false`).
+
+Reglas resultantes:
+
+```
+breweries.updateRule:
+@request.auth.role = 'admin' ||
+(claimed_by = @request.auth.id && @request.body.verified:isset = false && @request.body.claimed_by:isset = false) ||
+(claimed_by = '' && @request.body.claimed_by = @request.auth.id && @request.body.verified:isset = false)
+
+bars.updateRule:
+@request.auth.id != '' && (
+  (created_by = @request.auth.id && @request.body.verified:isset = false && @request.body.claimed_by:isset = false) ||
+  (claimed_by = @request.auth.id && @request.body.verified:isset = false && @request.body.claimed_by:isset = false) ||
+  @request.auth.role = 'admin' ||
+  (claimed_by = '' && @request.body.claimed_by = @request.auth.id && @request.body.verified:isset = false)
+)
+```
+
+### 11.3 Verificación curl real (14-jul)
+
+Auditoría de 12 llamadas reales contra el PocketBase vivo (usuarios de
+prueba creados y borrados en la misma corrida):
+
+| # | Acción | HTTP |
+|---|---|---|
+| 1/1b | Invitado sin login reclama bar/brewery | **404** ambos |
+| 2/2b | userA logueado reclama bar/brewery sin dueño | **200** ambos |
+| 3/3b | userB reclama el mismo bar/brewery, ya de userA | **404** ambos |
+| 4/4b | userA (dueño) se auto-verifica | **404** ambos |
+| 4c | userA (dueño) intenta liberar su propio `claimed_by` | **404** (hueco cerrado) |
+| 4d | userA (dueño) intenta reasignar `claimed_by` a userB | **404** (hueco cerrado) |
+| 4e | userA (dueño) edita `address` sin tocar claimed_by/verified | **200** |
+| 5/5b | Admin verifica bar/brewery | **200** ambos |
+| 5c | Admin reasigna `claimed_by` a otro usuario | **200** |
+| 5d | Admin limpia (libera) un `claimed_by` | **200** |
+
+Los 12 resultados coinciden exactamente con el diseño del Paso 2. Registros
+de prueba restaurados a su estado original tras la verificación.

@@ -40,7 +40,7 @@
     "listRule": "",
     "viewRule": "",
     "createRule": "@request.auth.role = 'admin'",
-    "updateRule": "@request.auth.role = 'admin' || (claimed_by = @request.auth.id && @request.body.verified:isset = false) || (claimed_by = '' && @request.body.claimed_by = @request.auth.id && @request.body.verified:isset = false)",
+    "updateRule": "@request.auth.role = 'admin' || (claimed_by = @request.auth.id && @request.body.verified:isset = false && @request.body.claimed_by:isset = false) || (claimed_by = '' && @request.body.claimed_by = @request.auth.id && @request.body.verified:isset = false)",
     "deleteRule": "@request.auth.role = 'admin'",
     "fields": [
       {
@@ -409,7 +409,7 @@
     "listRule": "",
     "viewRule": "",
     "createRule": "",
-    "updateRule": "@request.auth.id != '' && ((created_by = @request.auth.id && @request.body.verified:isset = false) || (claimed_by = @request.auth.id && @request.body.verified:isset = false) || @request.auth.role = 'admin' || (claimed_by = '' && @request.body.claimed_by = @request.auth.id && @request.body.verified:isset = false))",
+    "updateRule": "@request.auth.id != '' && ((created_by = @request.auth.id && @request.body.verified:isset = false && @request.body.claimed_by:isset = false) || (claimed_by = @request.auth.id && @request.body.verified:isset = false && @request.body.claimed_by:isset = false) || @request.auth.role = 'admin' || (claimed_by = '' && @request.body.claimed_by = @request.auth.id && @request.body.verified:isset = false))",
     "deleteRule": "@request.auth.id != '' && (created_by = @request.auth.id || @request.auth.role = 'admin')",
     "fields": [
       {
