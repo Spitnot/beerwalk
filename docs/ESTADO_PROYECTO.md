@@ -41,7 +41,12 @@ catálogo lo confirme (tolerancia ±0,4 pp); **Fase 3**, si el ABV no resolvió,
 el historial de escaneos de ESE bar (`bar_id` de la detección por
 proximidad) desempata hacia la candidata que ese bar ya sirvió antes (set
 membership sobre `scan_items`, sin componente posicional todavía —eso es la
-Fase 2, sin implementar).
+Fase 2, sin implementar). Antes de llegar a la cascada de `beers`, la jerga
+de estilo de mostrador (NEIPA, DIPA, CDA, ESB, Hefeweizen...) se traduce a
+su nombre canónico del catálogo (`resolve_style_alias`, tabla curada a mano
+en `dictionary.STYLE_ALIASES`) — sin esto, "NEIPA" ya fuzzy-matcheaba al
+estilo genérico "IPA" (es substring literal) perdiendo la especificidad
+real de la pizarra.
 
 **Refuerzo Vision (condicional).** Si >40% de los bloques quedan sin
 reconocer o la confianza media es baja, UNA llamada a Gemini Vision lee la
@@ -151,8 +156,8 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
   literales y el código verifica en `_verify_corroboration`
   (`enrichment.py`) que cada una existe tal cual en su página y menciona
   cervecera+cerveza juntas — ver detalle en §7.
-- Alias de estilos para el matching (una pizarra que dice "NEIPA" no matchea
-  la ficha "Hazy IPA"): mecanismo pendiente de diseñar.
+- ~~Alias de estilos para el matching~~ ✅ **Cerrado (13-jul, noche)**. Ver
+  detalle en §9.
 - El juicio del LLM en el paso 2 (si hay o no citas verificables) puede tener
   varianza entre ejecuciones. Aceptable por diseño, pero vigilarlo en las
   métricas ahora que el listón es más estricto.
@@ -169,24 +174,22 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 ## 5. Próximo paso concreto
 
 **Los 4 bloques originales, las 3 fases del desempate abordadas (0, 1, 3),
-el arreglo del listón de corroboración y el seed de bares vía OSM están
-completos.** Lo que queda, por orden de valor:
+el arreglo del listón de corroboración, el seed de bares vía OSM y el alias
+de estilos están completos.** Lo que queda, por orden de valor:
 
 1. **Revisar los 21 casos dudosos** del seed de bares OSM en
    `modulo-datos/seed/.bars_osm_review.json` (§8) — decisión de admin, no
    automatizable con la info disponible.
-2. **Alias de estilos para el matching** (NEIPA ↔ Hazy IPA) — mecanismo
-   pendiente de diseñar.
-3. **Deduplicación de `beers`** — revisar si necesita el mismo refuerzo que
+2. **Deduplicación de `beers`** — revisar si necesita el mismo refuerzo que
    `breweries` (variantes de nombre normalizado + dominio de source_url),
    a raíz del duplicado real detectado en un escaneo de prueba (§4).
-4. **Fase 2 del desempate** (persistir coordenadas de bloques en
+3. **Fase 2 del desempate** (persistir coordenadas de bloques en
    `scan_items`, componente posicional) — deliberadamente fuera de alcance
    hasta ahora; sin implementar.
-5. Vigilar en las métricas si el listón de corroboración más estricto
+4. Vigilar en las métricas si el listón de corroboración más estricto
    (§7) reduce demasiado la tasa de auto-publicación — el criterio nuevo es
    honesto pero más exigente; si `no_match` sube mucho, revisar el prompt.
-6. **Extender el seed de bares OSM** a más ciudades/regiones (hoy solo
+5. **Extender el seed de bares OSM** a más ciudades/regiones (hoy solo
    Barcelona ciudad) reejecutando `seed_bars_osm.py` con otro `--bbox`/
    `--city` — es idempotente y seguro de repetir.
 
@@ -477,3 +480,65 @@ Los 21 casos de `seed/.bars_osm_review.json` son decisión de admin (ver
 §5). El script es reejecutable para otras ciudades/bboxes sin tocar nada;
 Cataluña completa o el resto de España quedan para cuando se decida
 ampliar el piloto.
+
+## 9. Alias de jerga de estilos (13-jul, noche)
+
+Diseño recibido de un chat externo sin acceso al repo (útil como
+inspiración de intención, no aplicado como diff literal — se adaptó al
+`dictionary.py`/`matching.py` reales de después de Fase 1/Fase 3/
+corroboración).
+
+### 9.1 El problema real (confirmado antes de tocar código)
+
+Sin este arreglo, "NEIPA" ya **fuzzy-matcheaba accidentalmente** al estilo
+genérico "IPA" con `partial_ratio`=100 (porque "IPA" es substring literal
+de "NEIPA"), mientras que el estilo realmente correcto ("Hazy IPA") solo
+alcanzaba 66,7 — por debajo del `MATCH_THRESHOLD`. Mismo patrón con "DIPA"
+(100 vs "IPA", 62,5 vs "Double IPA" real). Verificado directamente con
+rapidfuzz antes de escribir nada, para confirmar que el pendiente era real
+y no solo teórico.
+
+### 9.2 Diseño implementado
+
+- **`dictionary.STYLE_ALIASES`**: tabla curada a mano, deliberadamente
+  conservadora — NEIPA→Hazy IPA, DIPA→Double IPA, CDA→Black IPA,
+  APA→Pale Ale, ESB→Best Bitter, RIS→Imperial Stout,
+  Hefeweizen/Weizen/Weissbier→Wheat, Blanche→Witbier. Ninguna abreviatura
+  ambigua (tipo "TIPA", que en la práctica puede significar cosas
+  distintas según el bar) — mejor sin resolver que crear una identidad
+  falsa, mismo criterio que el resto del desempate.
+- **`matching.resolve_style_alias(text, styles)`**: función pura, TOKEN
+  EXACTO tras normalizar (no fuzzy — un partial_ratio laxo sobre
+  abreviaturas de 3-4 letras daría falsos positivos). Fallo seguro DOBLE:
+  (1) si el canónico no existe en el catálogo `styles` actual, no resuelve
+  — nunca inventa un id; (2) si la propia clave del alias coincidiera con
+  un estilo REAL ya existente en el catálogo (caso hipotético, no pasa hoy
+  con el catálogo BJCP), tampoco resuelve — nunca pisa una entrada real.
+- **Dónde se llama**: en `match_line` (`matching.py`), como intento previo
+  a la fuzzy normal — `resolve_style_alias(line, styles) or _best_match(...)`
+  — y en el mismo punto para el refuerzo Vision (`vision.py`,
+  `build_vision_item`), para que un "NEIPA" leído por Gemini Vision se
+  canonice igual que uno leído por PaddleOCR. El catálogo `beers` (cuando
+  hay match directo de cerveza) no lo necesita: su `style` sale de la
+  relación ya guardada, canónica por construcción.
+- **Requisito de visualización — solo estilos, no cerveceras**: el
+  resultado de `resolve_style_alias` SIEMPRE muestra el nombre canónico
+  ("Hazy IPA"), nunca la jerga de la pizarra. El alias corto de
+  CERVECERA (`brand_aliases` en `dictionary.py`, ej. "Ayinger" en vez de
+  "Ayinger Privatbrauerei") sigue mostrándose tal cual — comportamiento
+  intacto, verificado con test explícito de coexistencia.
+
+### 9.3 Verificación
+
+`modulo-ocr/tests`: **57/57 en verde** (44 antes de esta sesión + 9 en
+`test_style_aliases.py` nuevo + 4 de integración en `test_matching.py`).
+Casos cubiertos: cada alias de la tabla resuelve a su canónico; fallo
+seguro cuando el canónico no está en el catálogo (CDA sin "Black IPA" en
+la BD → no resuelve); fallo seguro de no-pisar (caso hipotético "APA" real
++ "Pale Ale" real coexistiendo → no resuelve, se deja para el fuzzy
+normal); exige token completo, no substring ("Capadipa" no dispara DIPA);
+texto sin jerga conocida no resuelve; y el test de coexistencia confirma
+que en la misma línea el alias de cervecera se muestra corto ("Ayinger")
+mientras el de estilo se muestra canónico ("Hazy IPA"). Servicio `ocr`
+reconstruido y sano (sin ciclos de import entre `matching.py` y
+`dictionary.py`).

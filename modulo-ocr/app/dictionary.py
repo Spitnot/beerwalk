@@ -23,6 +23,26 @@ BRAND_SUFFIXES = {
     "cervecera", "cervesera", "cervesa", "cerveza", "brasserie", "co", "company",
 }
 
+# Alias de jerga de mostrador -> nombre canónico del catálogo de estilos.
+# Curado a mano, deliberadamente conservador: solo términos donde la jerga
+# designa SIEMPRE el mismo estilo real, nunca abreviaturas ambiguas que en
+# la práctica pueden significar cosas distintas según el contexto (mejor no
+# resolver que crear una identidad falsa, mismo criterio que el resto del
+# desempate). Claves en minúscula: se comparan contra tokens ya normalizados
+# (ver resolve_style_alias en matching.py).
+STYLE_ALIASES = {
+    "neipa": "Hazy IPA",
+    "dipa": "Double IPA",
+    "cda": "Black IPA",
+    "apa": "Pale Ale",
+    "esb": "Best Bitter",
+    "ris": "Imperial Stout",
+    "hefeweizen": "Wheat",
+    "weizen": "Wheat",
+    "weissbier": "Wheat",
+    "blanche": "Witbier",
+}
+
 
 def brand_aliases(names: dict[str, str]) -> dict[str, str]:
     """Añade alias de marca corta ("Ayinger Privatbrauerei" → "Ayinger"):

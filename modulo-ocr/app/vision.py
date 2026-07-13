@@ -31,7 +31,7 @@ from .config import (
     VISION_UNMATCHED_RATIO,
 )
 from .enrichment import _pb_auth, _pb_create
-from .matching import _best_match, beer_candidates
+from .matching import _best_match, beer_candidates, resolve_style_alias
 from .schemas import MatchedEntity, ScanItem, VisionUsage
 
 log = logging.getLogger("beerwalk.vision")
@@ -154,10 +154,12 @@ def build_vision_item(block: dict, breweries: dict, styles: dict, beers: dict) -
             hit = _best_match(line, {n: r["id"] for n, r in candidates.items()})
             if hit:
                 beer_ent = hit
+    style_text = block.get("style")
+    style_ent = resolve_style_alias(style_text or "", styles) or _entity_or_named(style_text, styles, line)
     return ScanItem(
         line=line,
         brewery=brewery_ent,
-        style=_entity_or_named(block.get("style"), styles, line),
+        style=style_ent,
         beer=beer_ent,
         beer_name=block.get("beer_name"),
         price=block.get("price"),

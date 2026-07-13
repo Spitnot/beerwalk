@@ -169,3 +169,38 @@ def test_historial_de_bar_no_descarta_si_ninguna_candidata_empatada_consta():
         "Espiga Blat Blanc", BREWERIES, STYLES, beers, bar_beer_ids={"beer-de-otra-cerveza"}
     )
     assert beer_name == "Blanc"
+
+
+# ── Alias de estilos (jerga de mostrador → nombre canónico) ─────────────
+
+def test_alias_de_estilo_en_match_line():
+    # Antes de este alias, "NEIPA" ya fuzzy-matcheaba (partial_ratio=100,
+    # "IPA" es substring literal de "NEIPA") al estilo genérico "IPA" —
+    # perdiendo la especificidad real de la pizarra. Con el alias, gana
+    # "Hazy IPA".
+    _, style, _ = match_line("Soma NEIPA Boost", BREWERIES, STYLES)
+    assert style and style.name == "Hazy IPA"
+
+
+def test_match_block_tambien_resuelve_alias_de_estilo():
+    # A través de match_block (sin catálogo beers, cae al fallback match_line)
+    _, style, _, _ = match_block("Soma NEIPA Boost", BREWERIES, STYLES, {})
+    assert style and style.name == "Hazy IPA"
+
+
+def test_alias_de_estilo_no_rompe_el_matching_normal_de_estilos():
+    # Un estilo canónico normal (sin jerga) sigue matcheando exactamente
+    # igual que antes de añadir el alias.
+    _, style, _ = match_line("Espiga Imperial Stout", BREWERIES, STYLES)
+    assert style and style.name == "Imperial Stout"
+
+
+def test_alias_de_estilo_no_toca_el_alias_de_cervecera():
+    # Requisito explícito: el alias corto de CERVECERA (ya expandido por
+    # brand_aliases en dictionary.py, aquí simulado a mano) sigue
+    # mostrándose tal cual — a diferencia del alias de ESTILO, que siempre
+    # muestra el canónico. Ambos coexisten en la misma línea sin pisarse.
+    breweries_con_alias = {**BREWERIES, "Ayinger": "b5"}  # alias corto ya expandido
+    brewery, style, _ = match_line("Ayinger NEIPA", breweries_con_alias, STYLES)
+    assert brewery and brewery.name == "Ayinger"  # alias corto, no una razón social
+    assert style and style.name == "Hazy IPA"      # canónico, no "NEIPA"

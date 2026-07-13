@@ -11,6 +11,7 @@ from rapidfuzz import fuzz, process, utils
 
 from .abv import extract_abv
 from .config import ABV_TOLERANCE, MATCH_THRESHOLD
+from .dictionary import STYLE_ALIASES
 from .schemas import MatchedEntity
 
 
@@ -164,13 +165,46 @@ def match_block(
     return brewery, style, None, beer_name
 
 
+def resolve_style_alias(text: str, styles: dict[str, str]) -> MatchedEntity | None:
+    """Alias de jerga de mostrador -> nombre canónico (NEIPA -> Hazy IPA,
+    DIPA -> Double IPA...; tabla en dictionary.STYLE_ALIASES). Token EXACTO
+    tras normalizar, no fuzzy: son abreviaturas cortas y un partial_ratio
+    laxo daría falsos positivos ("BAR NEIPA" contiene "IPA" como substring
+    y ya fuzzy-matchea al estilo genérico "IPA" hoy con el matching normal
+    — precisamente el problema que esto corrige, mostrando "Hazy IPA" en
+    vez del genérico).
+
+    Fallo seguro DOBLE: (1) si el estilo canónico no existe todavía en el
+    catálogo, no resuelve — nunca inventa un id; (2) si la propia clave del
+    alias coincidiera con un estilo REAL ya existente en el catálogo (caso
+    hipotético, no pasa hoy), tampoco resuelve — nunca pisa una entrada
+    real por casualidad de nombre.
+
+    El resultado SIEMPRE muestra el nombre canónico, a diferencia del alias
+    corto de cervecera (ver brand_aliases en dictionary.py), que sí se
+    muestra tal cual — ese comportamiento no cambia."""
+    tokens = set(utils.default_process(text).split())
+    if not tokens:
+        return None
+    normalized_style_names = {utils.default_process(name) for name in styles}
+    for alias, canonical in STYLE_ALIASES.items():
+        if alias in normalized_style_names:
+            continue  # ya existe como estilo propio y real: no se pisa
+        style_id = styles.get(canonical)
+        if not style_id:
+            continue  # el canónico no está en el catálogo: no se inventa
+        if alias in tokens:
+            return MatchedEntity(id=style_id, name=canonical, raw=text, score=100.0)
+    return None
+
+
 def match_line(
     line: str,
     breweries: dict[str, str],
     styles: dict[str, str],
 ) -> tuple[MatchedEntity | None, MatchedEntity | None, str | None]:
     brewery = _best_match(line, breweries)
-    style = _best_match(line, styles)
+    style = resolve_style_alias(line, styles) or _best_match(line, styles)
 
     # Nombre de la cerveza: quitamos las palabras ya explicadas por los matches
     remaining = line
