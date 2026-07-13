@@ -3,7 +3,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import ViewShot from "react-native-view-shot";
 import * as Sharing from "expo-sharing";
-import { palette, radius, spacing, type } from "@/theme";
+import { palette, radius, spacing, styleColors, type } from "@/theme";
+import { AbvPill } from "@/components/AbvPill";
 import { StyleBadge } from "@/components/StyleBadge";
 import { EnrichmentGlow, EnrichmentPulse, FadeIn } from "@/components/EnrichmentPulse";
 import { pb, isLoggedIn } from "@/lib/pocketbase";
@@ -35,6 +36,8 @@ export default function ScanResultado() {
   // Preseleccionado si la detección por proximidad fue CLARO; editable siempre
   const [barId, setBarId] = useState<string | null>(params.barId ?? null);
   const [saving, setSaving] = useState(false);
+  // Guardado desacoplado del bar: `saved` manda, `savedBar` puede ser null
+  const [saved, setSaved] = useState(false);
   const [savedBar, setSavedBar] = useState<Bar | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cardRef = useRef<ViewShot>(null);
@@ -77,6 +80,38 @@ export default function ScanResultado() {
     );
   }, [enrichStates]);
 
+  // Fichas de las entidades matcheadas: el valor de la card es enseñar lo
+  // que NO se lee en la tiza (cata, descripción de cervecera, perfil del
+  // estilo, ABV). Una consulta por colección, solo para los ids que falten.
+  interface Details {
+    breweries: Record<string, { id: string; name: string; origin: string; description: string }>;
+    styles: Record<string, { id: string; name: string; category: string; overall_impression?: string; description?: string }>;
+    beers: Record<string, { id: string; name: string; abv?: number; description?: string; tasting_notes?: string }>;
+  }
+  const [details, setDetails] = useState<Details>({ breweries: {}, styles: {}, beers: {} });
+  const matchedKey = items
+    .map((it) => `${it.brewery?.id ?? ""}·${it.style?.id ?? ""}·${it.beer?.id ?? ""}`)
+    .join(",");
+  useEffect(() => {
+    const load = (collection: keyof Details, ids: (string | null | undefined)[], fields: string) => {
+      const missing = [...new Set(ids.filter(isPbId))].filter((id) => !details[collection][id]);
+      if (missing.length === 0) return;
+      pb.collection(collection)
+        .getFullList({ filter: missing.map((id) => `id="${id}"`).join(" || "), fields, requestKey: null })
+        .then((recs) =>
+          setDetails((prev) => ({
+            ...prev,
+            [collection]: { ...prev[collection], ...Object.fromEntries(recs.map((r) => [r.id, r])) },
+          }))
+        )
+        .catch(() => {});
+    };
+    load("breweries", items.map((it) => it.brewery?.id), "id,name,origin,description");
+    load("styles", items.map((it) => it.style?.id), "id,name,category,overall_impression,description");
+    load("beers", items.map((it) => it.beer?.id), "id,name,abv,description,tasting_notes");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchedKey]);
+
   const edit = (i: number, value: string) => {
     const next = [...items];
     next[i] = { ...next[i], beer_name: value };
@@ -85,15 +120,13 @@ export default function ScanResultado() {
   };
 
   async function save() {
-    if (!barId) {
-      setError("Elige en qué bar estás antes de guardar.");
-      return;
-    }
+    // El bar es OPCIONAL: ver y guardar el resultado nunca depende de haberlo
+    // elegido (la detección por proximidad propone, el usuario decide o pasa).
     setSaving(true);
     setError(null);
     try {
       const form = new FormData();
-      form.append("bar", barId);
+      if (barId) form.append("bar", barId);
       form.append("raw_ocr_json", JSON.stringify(items));
       if (isLoggedIn()) form.append("created_by", pb.authStore.record!.id);
       else form.append("device_id", await getDeviceId());
@@ -149,6 +182,7 @@ export default function ScanResultado() {
         })
       );
       setSavedBar(bars.find((b) => b.id === barId) ?? null);
+      setSaved(true);
     } catch (e) {
       setError("No se pudo guardar el escaneo. Revisa la conexión con el servidor.");
     } finally {
@@ -168,7 +202,7 @@ export default function ScanResultado() {
   }
 
   // ── Vista post-guardado: card compartible ──────────────────────────────
-  if (savedBar) {
+  if (saved) {
     const today = new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long" });
     return (
       <ScrollView
@@ -188,7 +222,7 @@ export default function ScanResultado() {
             }}
           >
             <Text style={{ fontSize: 13, fontWeight: "800", color: palette.brandDark }}>🍺 BeerWalk</Text>
-            <Text style={type.h2}>{savedBar.name}</Text>
+            <Text style={type.h2}>{savedBar?.name ?? "Pizarra descubierta"}</Text>
             <Text style={{ ...type.soft, marginBottom: spacing(2) }}>
               {today} · {items.length} grifos en pizarra
             </Text>
@@ -230,29 +264,66 @@ export default function ScanResultado() {
       </Text>
       {items.map((item, i) => {
         const enr = item.enrichment_id ? enrichStates[item.enrichment_id] : undefined;
-        const searching = enr?.status === "pending" && !item.style?.name;
+        const searching = enr?.status === "pending";
+        const brewD = isPbId(item.brewery?.id) ? details.breweries[item.brewery!.id!] : undefined;
+        const styleD = isPbId(item.style?.id) ? details.styles[item.style!.id!] : undefined;
+        const beerD = isPbId(item.beer?.id) ? details.beers[item.beer!.id!] : undefined;
+        // Lo que no se ve en la tiza, por especificidad: cata de ESTA
+        // cerveza > su descripción > la cervecera > el perfil del estilo
+        const insight =
+          beerD?.tasting_notes || beerD?.description || brewD?.description ||
+          styleD?.overall_impression || styleD?.description || "";
+        const accent = searching
+          ? palette.brand
+          : styleD
+            ? (styleColors[styleD.category] ?? styleColors.default).bg
+            : palette.line;
         const badge = item.style?.name ? (
           // Preferente: ficha completa de la cerveza si el bloque matcheó
           // el catálogo `beers`; si no, el detalle de estilo como antes.
           isPbId(item.beer?.id) ? (
             <Link href={`/cerveza/${item.beer!.id}`}>
-              <StyleBadge name={item.style.name} />
+              <StyleBadge name={item.style.name} category={styleD?.category} />
             </Link>
           ) : isPbId(item.style.id) ? (
             <Link href={`/cerveza/${item.style.id}`}>
-              <StyleBadge name={item.style.name} />
+              <StyleBadge name={item.style.name} category={styleD?.category} />
             </Link>
           ) : (
             <StyleBadge name={item.style.name} />
           )
-        ) : (
-          <Text style={type.soft}>Estilo sin detectar — toca para asignar</Text>
-        );
+        ) : null;
         return (
-          <View key={i} style={{ backgroundColor: palette.surface, borderRadius: radius.md, borderWidth: 1, borderColor: searching ? palette.brand : palette.line, padding: spacing(3), marginBottom: spacing(2), gap: 6, overflow: "hidden" }}>
+          <View
+            key={i}
+            style={{
+              backgroundColor: palette.surface,
+              borderRadius: radius.md,
+              borderWidth: 1,
+              borderColor: searching ? palette.brand : palette.line,
+              borderLeftWidth: 4,
+              borderLeftColor: accent,
+              padding: spacing(3),
+              marginBottom: spacing(3),
+              gap: spacing(2),
+              overflow: "hidden",
+            }}
+          >
             {searching && <EnrichmentGlow />}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ ...type.body, fontWeight: "800" }}>{item.brewery?.name ?? "¿Cervecera?"}</Text>
+
+            {/* Lo que ya se lee en la tiza: cervecera arriba, nombre grande editable */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              {isPbId(item.brewery?.id) ? (
+                <Link href={`/cervecera/${item.brewery!.id}`} style={{ flexShrink: 1 }}>
+                  <Text style={{ ...type.soft, fontWeight: "800", color: palette.brandDark }} numberOfLines={1}>
+                    {item.brewery!.name}
+                  </Text>
+                </Link>
+              ) : (
+                <Text style={{ ...type.soft, fontWeight: "800", flexShrink: 1 }} numberOfLines={1}>
+                  {item.brewery?.name ?? "¿Cervecera?"}
+                </Text>
+              )}
               <Text style={{ ...type.soft, color: item.confidence > 0.85 ? palette.success : palette.danger }}>
                 {Math.round(item.confidence * 100)}%
               </Text>
@@ -261,22 +332,40 @@ export default function ScanResultado() {
               value={item.beer_name ?? ""}
               onChangeText={(v) => edit(i, v)}
               placeholder="Nombre de la cerveza"
-              style={{ ...type.body, padding: 0 }}
+              style={{ fontSize: 17, fontWeight: "800", color: palette.ink, padding: 0 }}
             />
-            {searching ? (
-              <EnrichmentPulse label="Verificando en la red" />
-            ) : enr ? (
-              // El enriquecimiento resolvió (ficha nueva o "sin detectar"):
-              // el resultado entra con fade, no de golpe
-              <FadeIn key={`${enr.status}-${item.style?.name ?? ""}`}>{badge}</FadeIn>
-            ) : (
-              badge
-            )}
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {badge}
+              {beerD?.abv ? <AbvPill abv={beerD.abv} small /> : null}
+            </View>
+
+            {/* La ficha: lo que la app aporta sobre la pizarra */}
+            {insight ? (
+              <FadeIn key={insight}>
+                <Text style={{ ...type.soft, lineHeight: 18 }} numberOfLines={3}>
+                  {insight}
+                </Text>
+              </FadeIn>
+            ) : searching ? (
+              <EnrichmentPulse label="Buscando más info en la red" />
+            ) : enr && enr.status !== "pending" ? (
+              <FadeIn key={enr.status}>
+                <Text style={type.soft}>Sin ficha en la red — corrige el nombre si la tiza engañó</Text>
+              </FadeIn>
+            ) : !item.style?.name ? (
+              <Text style={type.soft}>Estilo sin detectar — toca para asignar</Text>
+            ) : null}
           </View>
         );
       })}
 
-      <Text style={{ ...type.body, fontWeight: "800", marginTop: spacing(2), marginBottom: spacing(2) }}>¿En qué bar estás?</Text>
+      <Text style={{ ...type.body, fontWeight: "800", marginTop: spacing(2) }}>
+        ¿En qué bar estás? <Text style={{ ...type.soft, fontWeight: "400" }}>(opcional)</Text>
+      </Text>
+      <Text style={{ ...type.soft, marginBottom: spacing(2) }}>
+        Puedes guardar sin bar; elegirlo ayuda a otros a encontrar la pizarra.
+      </Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         {bars.map((b) => (
           <Pressable

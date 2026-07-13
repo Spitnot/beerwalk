@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { Link, useLocalSearchParams } from "expo-router";
+import { AbvPill } from "@/components/AbvPill";
 import { Screen } from "@/components/Screen";
 import { Section, PENDING } from "@/components/Section";
 import { StyleBadge } from "@/components/StyleBadge";
@@ -181,18 +182,7 @@ export default function CervezaDetail() {
     <Screen title={beer.name}>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         {style ? <StyleBadge name={style.name} category={style.category} /> : null}
-        {beer.abv ? (
-          <View
-            style={{
-              backgroundColor: palette.brand,
-              borderRadius: radius.pill,
-              paddingHorizontal: spacing(2),
-              paddingVertical: 3,
-            }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: "800", color: "#3D2A08" }}>{beer.abv}% vol.</Text>
-          </View>
-        ) : null}
+        {beer.abv ? <AbvPill abv={beer.abv} /> : null}
       </View>
 
       <Section title="Descripción">

@@ -133,6 +133,12 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
   la ficha "Hazy IPA"): mecanismo pendiente de diseñar.
 - El juicio "corroborated" del LLM tiene varianza entre ejecuciones (a veces
   conservador de más). Aceptable por diseño, pero vigilarlo en las métricas.
+- **Duplicado real de beer detectado en un escaneo de prueba (13-jul)**: al
+  retomar Fase 1/Fase 3 del desempate o el listón de corroboración, revisar
+  si la deduplicación de `beers` (hoy: nombre exacto + fuzzy por cervecera en
+  `enrichment.py`) necesita el mismo refuerzo que se aplicó a `breweries`
+  tras el caso del dominio secuestrado (variantes de nombre normalizado +
+  comparación por dominio de source_url). Solo anotado, sin arreglar.
 - `docs/01-03` anteriores pueden contener detalles desactualizados respecto a
   este documento; este archivo manda.
 
@@ -209,7 +215,24 @@ código leído y curl real contra el PocketBase vivo.
   invitado crea scan con `device_id` → 200 (fricción cero intacta).
 - Rate limiting nativo: ACTIVO, 5 reglas.
 
-### 6.4 Resumen ejecutivo
+### 6.4 Mejoras de UX del escaneo (13-jul, post-auditoría)
+
+1. **Loading del escaneo con vida**: `ScanningBoard` (lupa barriendo la
+   pizarra + glow ámbar + puntos) sustituye al ActivityIndicator estático de
+   `escanear.tsx` que parecía un cuelgue. Mismo lenguaje visual que
+   EnrichmentPulse.
+2. **Bar desacoplado del resultado**: `scans.bar` pasó a opcional (PB vivo +
+   schema, verificado con curl), `save()` ya no exige bar, el selector se
+   marca "(opcional)" y la card compartible funciona sin bar ("Pizarra
+   descubierta"). Ver resultados y guardarlos nunca depende del bar.
+3. **scan-resultado rediseñada a cards con jerarquía**: borde de color por
+   estilo (styleColors), cervecera enlazada a su ficha, nombre grande
+   editable, badge de estilo + AbvPill, y fragmento de cata/descripción
+   (beer > cervecera > estilo) — lo que no se lee en la tiza. Con
+   EnrichmentPulse si aún se enriquece; nunca hueco vacío. `AbvPill` extraído
+   a componente compartido (cerveza/cervecera/scan-resultado).
+
+### 6.5 Resumen ejecutivo
 
 - **Bloques originales: 4/4 terminados al 100%** (1 enriquecimiento, 2 BJCP,
   3 cerveceras, 4 indicador realtime).

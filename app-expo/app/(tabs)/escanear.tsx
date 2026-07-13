@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Screen } from "@/components/Screen";
+import { ScanningBoard } from "@/components/EnrichmentPulse";
 import { palette, radius, spacing, type } from "@/theme";
 import { scanBoard } from "@/lib/ocr";
 import { detectNearbyBar, type BarGeo, type ProximityResult } from "@/lib/geo";
@@ -73,7 +74,7 @@ export default function Escanear() {
         Apunta a la pizarra de grifos. Detectamos cerveceras y estilos y te dejamos corregir antes de guardar.
       </Text>
       {busy ? (
-        <ActivityIndicator size="large" color={palette.brandDark} />
+        <ScanningBoard />
       ) : (
         <View style={{ gap: spacing(3) }}>
           <Pressable

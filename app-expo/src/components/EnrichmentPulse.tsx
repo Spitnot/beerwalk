@@ -131,6 +131,56 @@ export function EnrichmentGlow() {
 }
 
 /**
+ * Estado de espera del escaneo (mientras /ocr lee la foto): pizarra grande
+ * con lupa barriéndola de lado a lado y el glow ámbar respirando detrás.
+ * Mismo lenguaje visual que EnrichmentPulse — nunca un spinner estático que
+ * parezca un cuelgue.
+ */
+export function ScanningBoard() {
+  const pulse = usePulse(1400);
+  const sweep = pulse.interpolate({ inputRange: [0, 1], outputRange: [-34, 34] });
+  const tilt = pulse.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["-8deg", "0deg", "8deg"] });
+
+  return (
+    <View
+      style={{
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: palette.brand,
+        backgroundColor: palette.surface,
+        padding: 28,
+        alignItems: "center",
+        gap: 10,
+        overflow: "hidden",
+      }}
+    >
+      <EnrichmentGlow />
+      <View style={{ alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 52 }}>🪧</Text>
+        <Animated.Text
+          style={{
+            fontSize: 30,
+            position: "absolute",
+            transform: [{ translateX: sweep }, { rotate: tilt }],
+          }}
+        >
+          🔍
+        </Animated.Text>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Text style={{ fontSize: 15, fontWeight: "800", color: palette.brandDark }}>
+          Leyendo la pizarra
+        </Text>
+        <Dots />
+      </View>
+      <Text style={{ fontSize: 12, color: palette.inkSoft, textAlign: "center" }}>
+        Detectando cerveceras y estilos en la foto
+      </Text>
+    </View>
+  );
+}
+
+/**
  * Aparición suave del contenido final cuando el enriquecimiento resuelve —
  * cambiar la `key` al cambiar de estado para relanzar el fade (sin saltos).
  */

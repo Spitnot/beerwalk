@@ -475,7 +475,7 @@
       {
         "name": "bar",
         "type": "relation",
-        "required": true,
+        "required": false,
         "collectionId": "bwbars000000001",
         "maxSelect": 1,
         "cascadeDelete": false

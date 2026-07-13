@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { Link, useLocalSearchParams } from "expo-router";
+import { AbvPill } from "@/components/AbvPill";
 import { Screen } from "@/components/Screen";
 import { Section, PENDING } from "@/components/Section";
 import { StyleBadge } from "@/components/StyleBadge";
@@ -128,20 +129,7 @@ export default function CerveceraDetail() {
                   {b.name}
                 </Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  {b.abv ? (
-                    <View
-                      style={{
-                        backgroundColor: palette.brand,
-                        borderRadius: radius.pill,
-                        paddingHorizontal: spacing(2),
-                        paddingVertical: 2,
-                      }}
-                    >
-                      <Text style={{ fontSize: 11, fontWeight: "800", color: "#3D2A08" }}>
-                        {b.abv}%
-                      </Text>
-                    </View>
-                  ) : null}
+                  {b.abv ? <AbvPill abv={b.abv} small /> : null}
                   {b.expand?.style ? (
                     <StyleBadge name={b.expand.style.name} category={b.expand.style.category} />
                   ) : null}
