@@ -168,21 +168,27 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 
 ## 5. Próximo paso concreto
 
-**Los 4 bloques originales Y las 3 fases del desempate abordadas (0, 1, 3)
-están completos, además del arreglo del listón de corroboración.** Lo que
-queda, por orden de valor:
+**Los 4 bloques originales, las 3 fases del desempate abordadas (0, 1, 3),
+el arreglo del listón de corroboración y el seed de bares vía OSM están
+completos.** Lo que queda, por orden de valor:
 
-1. **Alias de estilos para el matching** (NEIPA ↔ Hazy IPA) — mecanismo
+1. **Revisar los 21 casos dudosos** del seed de bares OSM en
+   `modulo-datos/seed/.bars_osm_review.json` (§8) — decisión de admin, no
+   automatizable con la info disponible.
+2. **Alias de estilos para el matching** (NEIPA ↔ Hazy IPA) — mecanismo
    pendiente de diseñar.
-2. **Deduplicación de `beers`** — revisar si necesita el mismo refuerzo que
+3. **Deduplicación de `beers`** — revisar si necesita el mismo refuerzo que
    `breweries` (variantes de nombre normalizado + dominio de source_url),
    a raíz del duplicado real detectado en un escaneo de prueba (§4).
-3. **Fase 2 del desempate** (persistir coordenadas de bloques en
+4. **Fase 2 del desempate** (persistir coordenadas de bloques en
    `scan_items`, componente posicional) — deliberadamente fuera de alcance
    hasta ahora; sin implementar.
-4. Vigilar en las métricas si el listón de corroboración más estricto
+5. Vigilar en las métricas si el listón de corroboración más estricto
    (§7) reduce demasiado la tasa de auto-publicación — el criterio nuevo es
    honesto pero más exigente; si `no_match` sube mucho, revisar el prompt.
+6. **Extender el seed de bares OSM** a más ciudades/regiones (hoy solo
+   Barcelona ciudad) reejecutando `seed_bars_osm.py` con otro `--bbox`/
+   `--city` — es idempotente y seguro de repetir.
 
 Pendiente de validación en dispositivo (no bloquea): el indicador del
 Bloque 4 está verificado a nivel de datos y suscripción con el mismo SDK de
@@ -239,7 +245,7 @@ código leído y curl real contra el PocketBase vivo.
   conservador (4/4 no_match), la varianza documentada sigue.
 - **Seed de bares OSM/Overpass**: NO implementado — cero referencias en el
   código. Bares en BD: **3** (los demo originales: La Espuma, El Grifo
-  Dorado, Bar Llúpol).
+  Dorado, Bar Llúpol). (Cerrado más tarde la misma sesión — ver §8.)
 
 ### 6.3 Seguridad — sin regresiones
 
@@ -377,3 +383,97 @@ que sí debe pasar.
 en `test_abv.py` + 4 de Fase 1 y 4 de Fase 3 en `test_matching.py` + 8 en
 `test_corroboration.py` − ninguno roto). Servicio `ocr` reconstruido y sano
 en cada paso.
+
+## 8. Seed de bares reales vía OpenStreetMap (13-jul, noche)
+
+Por qué ahora: la detección de proximidad GPS y la Fase 3 del desempate
+(§7) solo se pueden probar de verdad con densidad real de bares — hasta
+este seed solo había 3 (los demo). Piloto: Barcelona ciudad.
+
+### 8.1 Fuente y esquema
+
+**Overpass API** (OpenStreetMap), sin API key, datos © OpenStreetMap
+contributors bajo licencia ODbL. Gotcha real: la petición sin headers da
+**406** del Apache de overpass-api.de (no del intérprete) — hace falta
+`User-Agent` descriptivo y `Accept: application/json, text/*;q=0.1`
+explícitos.
+
+Etiquetas consultadas: `amenity=bar`, `amenity=pub`, `craft_beer=yes`,
+`microbrewery=yes`. Probado en Barcelona ciudad: `craft_beer=yes` dio
+**0 resultados** (la etiqueta apenas se usa en OSM España) y
+`microbrewery=yes` solo 15 — `amenity=bar`/`pub` domina el volumen (1764
+nodos totales, 1641 con nombre) y es el universo correcto: cualquier bar
+es un sitio válido de escaneo, no hace falta que esté especializado en
+cerveza artesana. No se descartó ninguna etiqueta por "ruido" de datos mal
+etiquetados — el volumen es simplemente denso en una ciudad grande.
+
+Campos nuevos en `bars` (schema vivo + `pb_schema.json`, mismo patrón que
+`pending` en `enrichments`): `source` (text), `verified` (bool), `osm_id`
+(text, `"node/<id>"` — permite reconocer en re-ejecuciones qué nodo OSM ya
+se sembró sin depender de fuzzy matching).
+
+### 8.2 Deduplicación en cascada (nunca a ciegas)
+
+`modulo-datos/seed_bars_osm.py`, con `rapidfuzz.token_set_ratio` (no
+`ratio` simple — se probó empíricamente contra pares reales de Barcelona:
+`ratio` da 60-89 para variantes legítimas del mismo bar como "Peter Pan"
+vs "Peter Pan Bar", perdiendo separación frente a nombres realmente
+distintos; `token_set_ratio` da 100 en esas mismas variantes y ≤45 en
+pares de bares distintos de la muestra — mucho mejor separado) y radio
+Haversine de 30m:
+
+1. `osm_id` ya sembrado → re-ejecución idempotente, se salta.
+2. ≤30m + similitud ≥90 → MISMO bar: no se crea, se completan huecos
+   (address/source/osm_id) sin pisar nada.
+3. ≤30m + similitud <55 → bares DISTINTOS que coinciden en la misma
+   zona/calle: se crea normal.
+4. ≤30m + similitud [55,90) → caso DUDOSO: no se decide solo, se anota en
+   `seed/.bars_osm_review.json` (candidato + bar existente parecido +
+   distancia + similitud) y no se toca PocketBase para ese candidato.
+
+Efecto colateral útil no buscado: como el script compara cada candidato
+contra TODO lo ya visto (incluidos los candidatos ya "creados" en el mismo
+lote), también detecta duplicados **dentro de los propios datos de OSM**
+(el mismo local mapeado dos veces por contribuyentes distintos) — 6 casos
+reales en Barcelona (ej. "Shôko"/"Shôko" a 23m, "Temple Bar"/"Temple Bar
+Irish Pub" a 10m), fusionados igual que si fueran duplicados contra
+PocketBase.
+
+### 8.3 Resultado en Barcelona ciudad
+
+bbox `41.32,2.05,41.47,2.23` (Barcelona ciudad; parámetro también acepta
+`--city "Barcelona, Spain"`, que geocodifica el bbox vía Nominatim, sin
+key). Resultado real:
+
+- **1641 bares con nombre** encontrados por Overpass (de 1764 nodos
+  totales; 123 sin nombre en OSM, descartados — `name` es obligatorio).
+- **1614 creados**, **6 duplicados** (fusionados, ver 8.2), **1 completado**
+  (hueco rellenado en un bar existente), **21 dudosos** anotados para
+  revisión de admin.
+- **Total de bares en PocketBase: 1617** (3 demo + 1614 nuevos).
+- **Idempotencia verificada**: re-ejecutar el mismo comando da
+  `0 creados, 6 duplicados, 0 completados, 21 dudosos` — exactamente
+  reproducible, no genera basura al repetir.
+
+Muestra real (10 de los 1614): Bar-Granja la Crema, JazzMan, Bar Lua,
+Zorita, Bar Celona Chic, Bar Saint Michel, La Mulatona, Bar Lips,
+Vermuteria Catalana, La bodegueta de Guinardó — todas con lat/lng reales
+y la mayoría con dirección de OSM.
+
+### 8.4 Verificación de permisos con curl real
+
+**Corrección de premisa**: `bars.createRule` NO es admin-only — está
+vacío (`""`), decisión de producto ya documentada en §2 ("invitados sin
+cuenta crean scans/bares libremente"). Verificado con curl real: POST sin
+auth a `bars` → **200** (cualquiera puede crear un bar). Lo que SÍ es
+admin/dueño-only es `updateRule`: PATCH sin auth → **404** (oculto);
+PATCH con superuser → **200**. El script usa credenciales de superusuario
+de todas formas (igual que los demás seeds) porque la parte de completar
+huecos en bares existentes SÍ necesita esas credenciales.
+
+### 8.5 Pendiente
+
+Los 21 casos de `seed/.bars_osm_review.json` son decisión de admin (ver
+§5). El script es reejecutable para otras ciudades/bboxes sin tocar nada;
+Cataluña completa o el resto de España quedan para cuando se decida
+ampliar el piloto.

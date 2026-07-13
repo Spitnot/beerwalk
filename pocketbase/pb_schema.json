@@ -433,6 +433,20 @@
         "required": false
       },
       {
+        "name": "source",
+        "type": "text",
+        "required": false
+      },
+      {
+        "name": "verified",
+        "type": "bool"
+      },
+      {
+        "name": "osm_id",
+        "type": "text",
+        "required": false
+      },
+      {
         "name": "created_by",
         "type": "relation",
         "required": false,

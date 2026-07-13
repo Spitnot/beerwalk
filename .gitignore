@@ -6,3 +6,4 @@ __pycache__/
 node_modules/
 .expo/
 .breweries_es_checkpoint.json
+.bars_osm_review.json
