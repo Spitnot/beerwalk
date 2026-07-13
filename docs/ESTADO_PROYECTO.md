@@ -179,7 +179,7 @@ código leído y curl real contra el PocketBase vivo.
 |---|---|---|
 | Home (feed) | 🟥 MOCK | "Pizarras recientes" renderiza `mockBars`; el mini-mapa es un placeholder estático que enlaza a Explorar. |
 | Buscador — estilos | ✅ REAL | Catálogo BJCP de PocketBase con orden editorial por familias (Bloque 2). |
-| Buscador — bares | 🟥 MOCK | Filtra `mockBars` en cliente. |
+| Buscador — bares | ✅ REAL (cerrado 13-jul, commit `7ba4e50`) | Mismo patrón que cerveceras: texto libre por nombre/dirección contra `bars` real, `mockBars` fuera de esta pantalla. |
 | Buscador — cerveceras | ✅ REAL (cerrado 13-jul, post-auditoría) | Sección CERVECERAS contra `breweries` real: búsqueda de texto libre por nombre u origen, contador de cervezas en catálogo por cervecera (una sola lectura de `beers` agregada en cliente, sin N+1), y nueva pantalla `cervecera/[id]` (descripción enriquecida o "buscando…" con el patrón del Bloque 4, ficha viva por realtime, y sus cervezas del catálogo enlazando a `cerveza/[id]`, que a su vez enlaza de vuelta). `verified` no se muestra ni filtra (flag interno de admin). `Section` extraída a componente compartido. Verificado con datos reales: "espiga"/"ayinger"/"gara" devuelven las fichas reales del catálogo de 76. |
 | Perfil (estadísticas) | 🟥 MOCK | `mockStats` fijos (23/41/12); el enlace a login/auth sí es real (`isLoggedIn`). |
 | Panel de bar | 🟥 PLACEHOLDER | 3 líneas de texto estático, sin lógica. |
