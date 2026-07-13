@@ -325,6 +325,24 @@ async def _reconcile_scan_items(
 # ── Tarea principal ──────────────────────────────────────────────────────
 
 
+async def _set_enrichment(
+    client: httpx.AsyncClient, token: str, enrichment_id: str, fields: dict
+) -> dict:
+    """Upsert del registro `enrichments` de esta tarea. La tarea escribe
+    `pending` nada más arrancar (la app lo muestra en vivo vía realtime) y
+    el resultado final PATCHea ese mismo registro — nunca hay dos filas para
+    un mismo enrichment_id."""
+    existing = await _pb_find_first(
+        client, token, "enrichments",
+        f'enrichment_id = "{_pb_filter_escape(enrichment_id)}"',
+    )
+    if existing:
+        return await _pb_patch(client, token, "enrichments", existing["id"], fields)
+    return await _pb_create(
+        client, token, "enrichments", {"enrichment_id": enrichment_id, **fields}
+    )
+
+
 async def enrich_item(enrichment_id: str, line: str, beer_name_hint: str | None) -> None:
     """Background task: busca la línea en la web y, con corroboración clara,
     publica brewery (si falta) + beer en PocketBase y deja el resultado en
@@ -335,6 +353,15 @@ async def enrich_item(enrichment_id: str, line: str, beer_name_hint: str | None)
             return
         _in_flight.add(key)
     try:
+        # Señal inmediata de "trabajando en ello" para la UI (Bloque 4). Si
+        # este write falla, la tarea sigue: el estado es cosmético, el
+        # resultado no.
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                token = await _pb_auth(client)
+                await _set_enrichment(client, token, enrichment_id, {"status": "pending"})
+        except Exception:
+            log.warning("enrichment %s: no se pudo escribir el estado pending", enrichment_id)
         await _enrich_item_inner(enrichment_id, line, beer_name_hint)
     except Exception:
         log.exception("enrichment %s failed", enrichment_id)
@@ -342,10 +369,7 @@ async def enrich_item(enrichment_id: str, line: str, beer_name_hint: str | None)
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 token = await _pb_auth(client)
-                await _pb_create(
-                    client, token, "enrichments",
-                    {"enrichment_id": enrichment_id, "status": "error"},
-                )
+                await _set_enrichment(client, token, enrichment_id, {"status": "error"})
         except Exception:
             pass
     finally:
@@ -433,10 +457,9 @@ async def _enrich_item_inner(enrichment_id: str, line: str, beer_hint: str | Non
         # ── PASO 1: resolver la CERVECERA ────────────────────────────────
         resolved = await _resolve_brewery(client, token, line, breweries)
         if not resolved:
-            await _pb_create(
-                client, token, "enrichments",
-                {"enrichment_id": enrichment_id, "status": "no_match",
-                 "detail": "cervecera no confirmada"},
+            await _set_enrichment(
+                client, token, enrichment_id,
+                {"status": "no_match", "detail": "cervecera no confirmada"},
             )
             return
         brewery_id, brewery_name = resolved
@@ -465,9 +488,9 @@ async def _enrich_item_inner(enrichment_id: str, line: str, beer_hint: str | Non
             styles=json.dumps(sorted(styles.keys()), ensure_ascii=False),
         ))
         if not data or not data.get("found") or not data.get("corroborated") or not data.get("beer_name"):
-            await _pb_create(
-                client, token, "enrichments",
-                {"enrichment_id": enrichment_id, "status": "no_match",
+            await _set_enrichment(
+                client, token, enrichment_id,
+                {"status": "no_match",
                  "detail": f"cerveza no corroborada (cervecera: {brewery_name})"},
             )
             return
@@ -511,9 +534,8 @@ async def _enrich_item_inner(enrichment_id: str, line: str, beer_hint: str | Non
                 {"name": data["beer_name"], "brewery": brewery_id, "source": "auto-web", **fields},
             )
 
-        await _pb_create(
-            client, token, "enrichments",
-            {"enrichment_id": enrichment_id, "status": "created", "beer": beer["id"]},
+        await _set_enrichment(
+            client, token, enrichment_id, {"status": "created", "beer": beer["id"]},
         )
         await _reconcile_scan_items(
             client, token, enrichment_id,

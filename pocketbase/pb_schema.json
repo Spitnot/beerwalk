@@ -316,6 +316,7 @@
         "required": true,
         "maxSelect": 1,
         "values": [
+          "pending",
           "created",
           "no_match",
           "error"

@@ -1,6 +1,15 @@
 import PocketBase, { AsyncAuthStore } from "pocketbase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import EventSource from "react-native-sse";
 import { POCKETBASE_URL } from "./config";
+
+// El realtime de PocketBase usa Server-Sent Events y React Native no trae
+// EventSource nativo — sin este polyfill, subscribe() no conecta jamás.
+// En web sí existe: solo se instala si falta.
+if (typeof global.EventSource === "undefined") {
+  // @ts-expect-error — la firma del polyfill no es idéntica a la del DOM
+  global.EventSource = EventSource;
+}
 
 /** Persistimos la sesión en AsyncStorage para sobrevivir reinicios de la app */
 const store = new AsyncAuthStore({

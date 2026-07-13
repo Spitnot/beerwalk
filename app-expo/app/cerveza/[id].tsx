@@ -4,8 +4,10 @@ import { useLocalSearchParams } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { StyleBadge } from "@/components/StyleBadge";
 import { StyleStats } from "@/components/StyleStats";
+import { EnrichmentPulse, FadeIn } from "@/components/EnrichmentPulse";
 import { palette, radius, spacing, type } from "@/theme";
 import { pb } from "@/lib/pocketbase";
+import { useAnyPendingEnrichment } from "@/lib/useEnrichments";
 import { BJCP_DISCLAIMER, type StyleBjcp } from "@/lib/bjcp";
 
 interface StyleRec extends StyleBjcp {
@@ -108,6 +110,45 @@ export default function CervezaDetail() {
       );
   }, [id]);
 
+  // Ficha VIVA: el enriquecimiento en background completa description/
+  // tasting_notes/cervecera con el tiempo — si pasa mientras se mira la
+  // ficha, el realtime la refresca solo (sin volver a entrar).
+  const breweryId = beer?.expand?.brewery?.id;
+  useEffect(() => {
+    if (!beer?.id) return;
+    let alive = true;
+    const refresh = () =>
+      pb.collection("beers")
+        .getOne<BeerRec>(beer.id, { expand: "brewery,style", requestKey: null })
+        .then((b) => alive && setBeer(b))
+        .catch(() => {});
+    const unsubs: (() => void)[] = [];
+    pb.collection("beers").subscribe(beer.id, refresh)
+      .then((un) => {
+        if (alive) unsubs.push(un);
+        else void un();
+      })
+      .catch(() => {});
+    if (breweryId) {
+      pb.collection("breweries").subscribe(breweryId, refresh)
+        .then((un) => {
+          if (alive) unsubs.push(un);
+          else void un();
+        })
+        .catch(() => {});
+    }
+    return () => {
+      alive = false;
+      unsubs.forEach((un) => un());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [beer?.id, breweryId]);
+
+  // ¿Hay una búsqueda web en curso que podría rellenar los huecos de ESTA
+  // ficha? Mientras la haya, los campos vacíos "buscan" en vez de decir
+  // "no disponible" a secas.
+  const anyPending = useAnyPendingEnrichment();
+
   if (error) {
     return (
       <Screen title="Cerveza">
@@ -176,18 +217,36 @@ export default function CervezaDetail() {
       </View>
 
       <Section title="Descripción">
-        <Text style={type.body}>{beer.description || PENDING}</Text>
+        {beer.description ? (
+          <FadeIn key={beer.description}><Text style={type.body}>{beer.description}</Text></FadeIn>
+        ) : anyPending ? (
+          <EnrichmentPulse label="Buscando más info en la red" />
+        ) : (
+          <Text style={type.body}>{PENDING}</Text>
+        )}
       </Section>
 
       <Section title="Notas de cata">
-        <Text style={type.body}>{beer.tasting_notes || PENDING}</Text>
+        {beer.tasting_notes ? (
+          <FadeIn key={beer.tasting_notes}><Text style={type.body}>{beer.tasting_notes}</Text></FadeIn>
+        ) : anyPending ? (
+          <EnrichmentPulse label="Buscando más info en la red" />
+        ) : (
+          <Text style={type.body}>{PENDING}</Text>
+        )}
       </Section>
 
       <Section title={brewery ? `Cervecera · ${brewery.name}` : "Cervecera"}>
         {brewery ? (
           <>
             {brewery.origin ? <Text style={type.soft}>{brewery.origin}</Text> : null}
-            <Text style={type.body}>{brewery.description || PENDING}</Text>
+            {brewery.description ? (
+              <FadeIn key={brewery.description}><Text style={type.body}>{brewery.description}</Text></FadeIn>
+            ) : anyPending ? (
+              <EnrichmentPulse label="Buscando más info en la red" />
+            ) : (
+              <Text style={type.body}>{PENDING}</Text>
+            )}
           </>
         ) : (
           <Text style={type.body}>{PENDING}</Text>

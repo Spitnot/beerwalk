@@ -84,7 +84,9 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 > PaddleOCR "Slim" y Qwen 2.5. **Nada de eso existe en este repo.** Lo real:
 
 - **App móvil**: Expo SDK 54 (React Native, expo-router, Expo Go). GPS con
-  expo-location. `app-expo/`.
+  expo-location. Realtime de PocketBase por SSE con polyfill
+  `react-native-sse` (RN no trae EventSource; el polyfill se instala en
+  `src/lib/pocketbase.ts` solo si falta — en web se usa el nativo). `app-expo/`.
 - **Backend de datos**: **PocketBase** (SQLite embebido, pero vía PocketBase —
   no hay SQLite propio ni FTS5). Schema en `pocketbase/pb_schema.json`
   (12 collections). Reglas por rol endurecidas + rate limiting nativo por IP.
@@ -113,7 +115,7 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 | Bloque 1 — Enriquecimiento cervecera-primero + `tasting_notes` + ficha de cerveza en UI | ✅ Terminado, verificado e2e (caso "Aymgar"→Ayinger) y commiteado |
 | Bloque 2 — Catálogo BJCP 2023 (39 estilos, 7 familias editoriales, disclaimer, badges ABV/IBU/SRM, buscador ordenado) | ✅ Terminado, verificado (seed idempotente + curl) y commiteado |
 | Bloque 3 — seed de cerveceras españolas | ✅ Terminado (13-jul). Verificación legal hecha: Birrapedia y tiendas descartadas (ver decisiones), AECAI + Wikidata como índice. `modulo-datos/seed_breweries_es.py` construido y ejecutado: 59 candidatas procesadas, catálogo en **76 cerveceras** (antes ~18). Idempotente verificado (re-ejecución: 0 creadas, 59 al día), dedupe por nombre normalizado + dominio de source_url, checkpoint incremental (gitignorado), robots.txt por dominio + rate limit 1,5s, guard anti-dominios-expirados (caso real: la web de Dos Dingos sirve un casino chino — su ficha apunta al índice AECAI). Objetivo ~200 NO alcanzado de golpe por diseño: el resto crece orgánicamente vía enriquecimiento. Reglas admin-only verificadas con curl (sin auth 400 / superuser crea+borra). |
-| Bloque 4 — Indicador visual de enriquecimiento en curso (estado `pending` + realtime de PocketBase + UI animada) | ⏳ Pendiente. Requiere escribir el estado `pending` al arrancar la tarea (hoy solo se escribe al terminar). |
+| Bloque 4 — Indicador visual de enriquecimiento en curso (estado `pending` + realtime de PocketBase + UI animada) | ✅ Terminado (13-jul). Backend: `pending` añadido al select de `enrichments` (schema + PB vivo), la tarea lo escribe al arrancar y el resultado final PATCHea ese mismo registro (upsert por `enrichment_id`, nunca dos filas). Frontend: realtime de PocketBase vía SSE (polyfill `react-native-sse`, imprescindible en RN), hook `useEnrichments` (suscripción única filtrada en cliente, cero polling), indicador propio `EnrichmentPulse` (lupa oscilando + puntos "escribiendo" + glow ámbar respirando sobre la card, nada de ActivityIndicator) y transición con fade al resolver. Aplicado en `scan-resultado` (con fusión del resultado en el item), `bar/[id]` (pizarra actual, recarga al resolver) y `cerveza/[id]` (ficha viva suscrita a su beer/brewery; huecos muestran "buscando" si hay enriquecimiento en curso). **Verificado e2e con escaneo real**: 4 tareas emitieron `create: pending` → `update: no_match` por SSE (suscriptor Node con el mismo SDK), y tránsito `pending→created` con relación `beer` verificado aparte. Los 4 bloques originales están completos. |
 | Desempate — Fase 0 (acotado por cervecera) | ✅ Hecha y verificada con la pizarra real |
 | Desempate — Fase 1 (regex ABV con fallo seguro y tolerancia ±0,3-0,5, NUNCA igualdad exacta) | ⏳ Desbloqueada, sin implementar |
 | Desempate — Fase 2 (persistir coordenadas de bloques en scan_items) | ⏳ Sin implementar |
@@ -136,10 +138,19 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 
 ## 5. Próximo paso concreto
 
-**Bloque 4 — indicador visual de enriquecimiento en curso**: escribir el
-estado `pending` al arrancar la tarea de enriquecimiento (hoy solo se escribe
-al terminar), suscripción realtime de PocketBase en la app y UI animada en
-`scan-resultado`.
+**Los 4 bloques originales están completos.** Lo siguiente, por orden de
+valor según los pendientes anotados:
+
+1. **Fase 1 del desempate** (regex ABV con fallo seguro y tolerancia
+   ±0,3-0,5, NUNCA igualdad exacta) — desbloqueada y sin implementar.
+2. **Endurecer el prompt de corroboración** del paso 2 del enriquecimiento
+   (falso positivo real documentado en §4).
+3. Alias de estilos para el matching (NEIPA ↔ Hazy IPA).
+
+Pendiente de validación en dispositivo (no bloquea): el indicador del
+Bloque 4 está verificado a nivel de datos y suscripción con el mismo SDK de
+la app; falta solo verlo en Expo Go en un móvil (animación y transiciones),
+sin entorno de simulador en esta máquina.
 
 Notas del Bloque 3 que quedan vivas:
 

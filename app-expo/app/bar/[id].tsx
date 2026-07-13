@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Text, View } from "react-native";
 import { Link, useLocalSearchParams } from "expo-router";
 import { Screen } from "@/components/Screen";
 import { StyleBadge } from "@/components/StyleBadge";
+import { EnrichmentPulse, FadeIn } from "@/components/EnrichmentPulse";
 import { palette, radius, spacing, type } from "@/theme";
 import { pb } from "@/lib/pocketbase";
+import { useEnrichments } from "@/lib/useEnrichments";
 
 interface Bar {
   id: string;
@@ -16,6 +18,8 @@ interface ScanItemRecord {
   id: string;
   beer_name: string;
   scan: string;
+  style?: string;
+  enrichment_id?: string;
   expand?: {
     scan?: { id: string; created: string };
     style?: { id: string; name: string; category: string };
@@ -35,17 +39,14 @@ export default function BarDetail() {
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadBoards = useCallback(() => {
     if (!id) return;
-    pb.collection("bars")
-      .getOne<Bar>(id, { fields: "id,name,address" })
-      .then(setBar)
-      .catch(() => setError("No se pudo cargar el bar. ¿Sigue existiendo?"));
     pb.collection("scan_items")
       .getFullList<ScanItemRecord>({
         filter: `scan.bar = "${id}"`,
         expand: "scan,style",
         sort: "-created",
+        requestKey: null,
       })
       .then((items) => {
         const byScan = new Map<string, Board>();
@@ -60,6 +61,29 @@ export default function BarDetail() {
       })
       .catch(() => setError("No se pudieron cargar las pizarras de este bar."));
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    pb.collection("bars")
+      .getOne<Bar>(id, { fields: "id,name,address" })
+      .then(setBar)
+      .catch(() => setError("No se pudo cargar el bar. ¿Sigue existiendo?"));
+    loadBoards();
+  }, [id, loadBoards]);
+
+  // Enriquecimiento EN VIVO sobre la pizarra actual: los items que aún están
+  // "verificando en la red" lo muestran, y al resolverse se recarga la
+  // pizarra (la tarea backend ya habrá reconciliado el scan_item).
+  const currentItems = boards?.[0]?.items ?? [];
+  const enrichStates = useEnrichments(currentItems.map((it) => it.enrichment_id));
+  const resolvedKey = Object.entries(enrichStates)
+    .filter(([, s]) => s.status !== "pending")
+    .map(([k, s]) => `${k}:${s.status}`)
+    .sort()
+    .join(",");
+  useEffect(() => {
+    if (resolvedKey) loadBoards();
+  }, [resolvedKey, loadBoards]);
 
   if (error) {
     return (
@@ -87,16 +111,25 @@ export default function BarDetail() {
       {current ? (
         <View style={{ gap: spacing(2), marginBottom: spacing(4) }}>
           <Text style={type.soft}>Escaneada el {fmt(current.created)}</Text>
-          {current.items.map((it) => (
-            <View key={it.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <Text style={{ ...type.body, flexShrink: 1 }} numberOfLines={1}>{it.beer_name || "—"}</Text>
-              {it.expand?.style ? (
-                <Link href={`/cerveza/${it.expand.style.id}`}>
-                  <StyleBadge name={it.expand.style.name} category={it.expand.style.category} />
-                </Link>
-              ) : null}
-            </View>
-          ))}
+          {current.items.map((it) => {
+            const searching =
+              it.enrichment_id && !it.expand?.style &&
+              enrichStates[it.enrichment_id]?.status === "pending";
+            return (
+              <View key={it.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <Text style={{ ...type.body, flexShrink: 1 }} numberOfLines={1}>{it.beer_name || "—"}</Text>
+                {searching ? (
+                  <EnrichmentPulse compact label="Verificando" />
+                ) : it.expand?.style ? (
+                  <FadeIn>
+                    <Link href={`/cerveza/${it.expand.style.id}`}>
+                      <StyleBadge name={it.expand.style.name} category={it.expand.style.category} />
+                    </Link>
+                  </FadeIn>
+                ) : null}
+              </View>
+            );
+          })}
         </View>
       ) : (
         <Text style={{ ...type.soft, marginBottom: spacing(4) }}>

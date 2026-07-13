@@ -5,7 +5,9 @@ import ViewShot from "react-native-view-shot";
 import * as Sharing from "expo-sharing";
 import { palette, radius, spacing, type } from "@/theme";
 import { StyleBadge } from "@/components/StyleBadge";
+import { EnrichmentGlow, EnrichmentPulse, FadeIn } from "@/components/EnrichmentPulse";
 import { pb, isLoggedIn } from "@/lib/pocketbase";
+import { useEnrichments } from "@/lib/useEnrichments";
 import { getDeviceId } from "@/lib/device";
 import type { ScanItem } from "@/lib/ocr";
 
@@ -43,6 +45,37 @@ export default function ScanResultado() {
       .then(setBars)
       .catch(() => setError("No se pudo cargar la lista de bares."));
   }, []);
+
+  // Enriquecimiento web EN VIVO (Bloque 4): los items recién escaneados que
+  // dispararon búsqueda en background se muestran "verificando" y, cuando la
+  // suscripción realtime trae el resultado, la ficha aparece sola (sin
+  // refrescar). assumePending: el escaneo es de hace segundos.
+  const enrichStates = useEnrichments(
+    items.map((it) => it.enrichment_id),
+    { assumePending: true }
+  );
+  useEffect(() => {
+    setItems((prev) =>
+      prev.map((it) => {
+        const st = it.enrichment_id ? enrichStates[it.enrichment_id] : undefined;
+        if (st?.status !== "created" || !st.beer || isPbId(it.beer?.id)) return it;
+        return {
+          ...it,
+          beer: { id: st.beer.id, name: st.beer.name, raw: it.line, score: 1 },
+          brewery: isPbId(it.brewery?.id)
+            ? it.brewery
+            : st.beer.brewery
+              ? { id: st.beer.brewery.id, name: st.beer.brewery.name, raw: it.line, score: 1 }
+              : it.brewery,
+          style: isPbId(it.style?.id)
+            ? it.style
+            : st.beer.style
+              ? { id: st.beer.style.id, name: st.beer.style.name, raw: it.line, score: 1 }
+              : it.style,
+        };
+      })
+    );
+  }, [enrichStates]);
 
   const edit = (i: number, value: string) => {
     const next = [...items];
@@ -195,39 +228,53 @@ export default function ScanResultado() {
       <Text style={{ ...type.soft, marginBottom: spacing(3) }}>
         Revisa lo detectado. Toca para corregir antes de guardar.
       </Text>
-      {items.map((item, i) => (
-        <View key={i} style={{ backgroundColor: palette.surface, borderRadius: radius.md, borderWidth: 1, borderColor: palette.line, padding: spacing(3), marginBottom: spacing(2), gap: 6 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ ...type.body, fontWeight: "800" }}>{item.brewery?.name ?? "¿Cervecera?"}</Text>
-            <Text style={{ ...type.soft, color: item.confidence > 0.85 ? palette.success : palette.danger }}>
-              {Math.round(item.confidence * 100)}%
-            </Text>
-          </View>
-          <TextInput
-            value={item.beer_name ?? ""}
-            onChangeText={(v) => edit(i, v)}
-            placeholder="Nombre de la cerveza"
-            style={{ ...type.body, padding: 0 }}
-          />
-          {item.style?.name ? (
-            // Preferente: ficha completa de la cerveza si el bloque matcheó
-            // el catálogo `beers`; si no, el detalle de estilo como antes.
-            isPbId(item.beer?.id) ? (
-              <Link href={`/cerveza/${item.beer!.id}`}>
-                <StyleBadge name={item.style.name} />
-              </Link>
-            ) : isPbId(item.style.id) ? (
-              <Link href={`/cerveza/${item.style.id}`}>
-                <StyleBadge name={item.style.name} />
-              </Link>
-            ) : (
+      {items.map((item, i) => {
+        const enr = item.enrichment_id ? enrichStates[item.enrichment_id] : undefined;
+        const searching = enr?.status === "pending" && !item.style?.name;
+        const badge = item.style?.name ? (
+          // Preferente: ficha completa de la cerveza si el bloque matcheó
+          // el catálogo `beers`; si no, el detalle de estilo como antes.
+          isPbId(item.beer?.id) ? (
+            <Link href={`/cerveza/${item.beer!.id}`}>
               <StyleBadge name={item.style.name} />
-            )
+            </Link>
+          ) : isPbId(item.style.id) ? (
+            <Link href={`/cerveza/${item.style.id}`}>
+              <StyleBadge name={item.style.name} />
+            </Link>
           ) : (
-            <Text style={type.soft}>Estilo sin detectar — toca para asignar</Text>
-          )}
-        </View>
-      ))}
+            <StyleBadge name={item.style.name} />
+          )
+        ) : (
+          <Text style={type.soft}>Estilo sin detectar — toca para asignar</Text>
+        );
+        return (
+          <View key={i} style={{ backgroundColor: palette.surface, borderRadius: radius.md, borderWidth: 1, borderColor: searching ? palette.brand : palette.line, padding: spacing(3), marginBottom: spacing(2), gap: 6, overflow: "hidden" }}>
+            {searching && <EnrichmentGlow />}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ ...type.body, fontWeight: "800" }}>{item.brewery?.name ?? "¿Cervecera?"}</Text>
+              <Text style={{ ...type.soft, color: item.confidence > 0.85 ? palette.success : palette.danger }}>
+                {Math.round(item.confidence * 100)}%
+              </Text>
+            </View>
+            <TextInput
+              value={item.beer_name ?? ""}
+              onChangeText={(v) => edit(i, v)}
+              placeholder="Nombre de la cerveza"
+              style={{ ...type.body, padding: 0 }}
+            />
+            {searching ? (
+              <EnrichmentPulse label="Verificando en la red" />
+            ) : enr ? (
+              // El enriquecimiento resolvió (ficha nueva o "sin detectar"):
+              // el resultado entra con fade, no de golpe
+              <FadeIn key={`${enr.status}-${item.style?.name ?? ""}`}>{badge}</FadeIn>
+            ) : (
+              badge
+            )}
+          </View>
+        );
+      })}
 
       <Text style={{ ...type.body, fontWeight: "800", marginTop: spacing(2), marginBottom: spacing(2) }}>¿En qué bar estás?</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
