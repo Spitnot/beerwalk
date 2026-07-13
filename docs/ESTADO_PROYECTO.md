@@ -719,3 +719,51 @@ prueba creados y borrados en la misma corrida):
 
 Los 12 resultados coinciden exactamente con el diseño del Paso 2. Registros
 de prueba restaurados a su estado original tras la verificación.
+
+## 12. Dedupe de `beers` — diagnóstico hecho, diseño PENDIENTE (14-jul)
+
+Tarea de menor prioridad del cierre de sesión; se paró aquí a propósito
+tras el diagnóstico, sin tocar código, porque la premisa de partida no
+encajaba con la realidad (instrucción explícita: no avanzar sobre una
+premisa incorrecta sin confirmar antes).
+
+**Hallazgo clave — NO hay un único patrón de dedupe que replicar.** Se
+comprobaron los tres mecanismos reales, uno por uno:
+
+1. `seed_bars_osm.py`: `token_set_ratio` (rapidfuzz) + radio Haversine 30m.
+2. `seed_breweries_es.py`: **sin rapidfuzz** — sets de variantes de nombre
+   normalizado (`name_variants()`) por intersección exacta, O coincidencia
+   de dominio de `source_url`. Sin geo (breweries no tiene lat/lng).
+3. **`beers` ya tiene un tercer mecanismo, en vivo, dentro de
+   `enrichment.py`** (no un script de seed por lotes — no existe
+   `seed_beers_*.py`): nombre exacto acotado a `brewery_id`, y si no hay
+   match, `_best_match()` (rapidfuzz `partial_ratio`) también acotado a
+   `brewery_id` vía `beer_candidates()`.
+
+**Decisión ya tomada en el diagnóstico** (no requiere diseño aparte):
+el dedupe de `beers` debe seguir siendo **por cervecera, nunca global** —
+`beer_candidates(beers, brewery_id)` ya asume esto en todo el pipeline
+(Fase 0 del desempate depende de que nombres genéricos como "IPA" o
+"Session" puedan repetirse legítimamente entre cerveceras distintas sin
+ser duplicados). El dominio de `source_url` es mucho menos discriminante
+aquí que en breweries: varias cervezas de la MISMA marca comparten el
+mismo dominio, así que solo confirmaría "misma cervecera" — información
+que `brewery_id` ya da directamente.
+
+**Caso de duplicado real de la semana**: no se conservó el nombre exacto
+en ningún sitio (solo quedó anotado genéricamente en el pendiente de §4);
+no se puede reproducir el caso *literal* sin ese dato. Habría que
+construir un caso sintético representativo (variante de nombre bajo la
+misma cervecera) para probar el mecanismo cuando se retome.
+
+**Pendiente para la próxima sesión** (Paso 2/3/4 sin empezar):
+1. Decidir el mecanismo concreto a reforzar en `_enrich_item_inner`: subir
+   de `partial_ratio` a `token_set_ratio` (como bars) para tolerar mejor
+   sufijos/variantes de nombre, manteniendo el acotado por `brewery_id`.
+2. Decidir el umbral (bars usa 90/55; el `_best_match` actual de beers usa
+   `MATCH_THRESHOLD`=78 general, no calibrado para este caso específico).
+3. Construir el caso sintético de verificación (dos nombres de cerveza
+   variantes bajo la misma cervecera) y confirmar que el mecanismo
+   reforzado los fusiona sin fusionar nombres genéricos de cerveceras
+   distintas.
+4. Documentar el resultado final aquí.
