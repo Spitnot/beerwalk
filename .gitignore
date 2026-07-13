@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 node_modules/
 .expo/
+.breweries_es_checkpoint.json

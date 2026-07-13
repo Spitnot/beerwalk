@@ -1,6 +1,6 @@
 # BeerWalk — Estado del proyecto
 
-> Checkpoint de sesión: **2026-07-12**. Este documento es la fuente de verdad
+> Checkpoint de sesión: **2026-07-13**. Este documento es la fuente de verdad
 > sobre qué existe, qué se decidió y por qué. Sobrevive a cualquier limpieza
 > de contexto de las sesiones de IA: ante la duda, créele a este archivo y al
 > código, no a la memoria de nadie.
@@ -71,6 +71,8 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 | **Auto-publicación de fichas de enriquecimiento activa con confianza alta, PERO la confirmación manual del usuario en el escaneo se mantiene.** | El pipeline publica fichas de catálogo solo con corroboración clara (mejor no crear que crear mal); quitar la confirmación del usuario al guardar exige semanas de datos reales de acierto. Pendiente de revisar con métricas acumuladas. |
 | **Estilos: vocabulario controlado.** El enriquecimiento NUNCA auto-crea estilos, solo enlaza por fuzzy a los existentes. | Evitar duplicados semánticos (IPA / India Pale Ale) que degradan el matching. El catálogo de estilos se cura vía seed BJCP + admin. |
 | **Untappd vetado como fuente** (scraping contra sus ToS). | Solo se añadiría como fuente si algún día hay acceso a su API oficial. |
+| **Birrapedia vetada como fuente** (verificación legal 12-jul-2026). | Sus condiciones de uso prohíben expresamente el acceso "a través de mecanismos/medios distintos de la interfaz" y reservan todos los derechos sobre sus bases de datos; no tiene API. Solo utilizable con autorización expresa (hay email de contacto en sus condiciones). Las tiendas online (se revisó Labirratorium) también se descartan: robots.txt anti-crawler, catálogo con copyright, sin API pública. |
+| **Fuentes del seed de cerveceras: AECAI + Wikidata como índice, webs oficiales como fuente.** `description` se deja vacía en el seed. | AECAI (robots.txt permite todo) solo aporta URL + pista de nombre; Wikidata es CC0. El nombre canónico se extrae de la web oficial de cada cervecera respetando su robots.txt individual y con rate limit. La descripción de marketing de cada web tiene copyright: la rellenará el enriquecimiento con paráfrasis (misma política que BJCP). |
 | **Nombre del proyecto: BeerWalk** (genérico). | Pulir marca más adelante; no invertir ahora. |
 | **NUNCA mencionar ni asociar la app con CAMRA.** | Marca registrada; es solo inspiración de filosofía. No debe aparecer en UI, textos, marketing ni metadatos. |
 | **Textos BJCP siempre parafraseados.** | La guía BJCP 2023 tiene copyright: los descriptivos del catálogo están redactados por nosotros; solo los rangos numéricos, códigos y ejemplos comerciales (datos factuales) se copian tal cual. Disclaimer visible en Ajustes y en el detalle de estilo. |
@@ -110,7 +112,7 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 |---|---|
 | Bloque 1 — Enriquecimiento cervecera-primero + `tasting_notes` + ficha de cerveza en UI | ✅ Terminado, verificado e2e (caso "Aymgar"→Ayinger) y commiteado |
 | Bloque 2 — Catálogo BJCP 2023 (39 estilos, 7 familias editoriales, disclaimer, badges ABV/IBU/SRM, buscador ordenado) | ✅ Terminado, verificado (seed idempotente + curl) y commiteado |
-| Bloque 3 — ~200 cerveceras españolas | ⏳ **PENDIENTE — es el siguiente.** Empezar OBLIGATORIAMENTE por la verificación legal (robots.txt + ToS de Birrapedia, ídem de alguna tienda especializada, y si existe API oficial) ANTES de construir `seed_breweries_es.py`. Webs oficiales de cada cervecera = fuente prioritaria. |
+| Bloque 3 — seed de cerveceras españolas | ✅ Terminado (13-jul). Verificación legal hecha: Birrapedia y tiendas descartadas (ver decisiones), AECAI + Wikidata como índice. `modulo-datos/seed_breweries_es.py` construido y ejecutado: 59 candidatas procesadas, catálogo en **76 cerveceras** (antes ~18). Idempotente verificado (re-ejecución: 0 creadas, 59 al día), dedupe por nombre normalizado + dominio de source_url, checkpoint incremental (gitignorado), robots.txt por dominio + rate limit 1,5s, guard anti-dominios-expirados (caso real: la web de Dos Dingos sirve un casino chino — su ficha apunta al índice AECAI). Objetivo ~200 NO alcanzado de golpe por diseño: el resto crece orgánicamente vía enriquecimiento. Reglas admin-only verificadas con curl (sin auth 400 / superuser crea+borra). |
 | Bloque 4 — Indicador visual de enriquecimiento en curso (estado `pending` + realtime de PocketBase + UI animada) | ⏳ Pendiente. Requiere escribir el estado `pending` al arrancar la tarea (hoy solo se escribe al terminar). |
 | Desempate — Fase 0 (acotado por cervecera) | ✅ Hecha y verificada con la pizarra real |
 | Desempate — Fase 1 (regex ABV con fallo seguro y tolerancia ±0,3-0,5, NUNCA igualdad exacta) | ⏳ Desbloqueada, sin implementar |
@@ -134,15 +136,17 @@ escaneos matchean por catálogo → menos llamadas externas con el tiempo.
 
 ## 5. Próximo paso concreto
 
-**Bloque 3, empezando por la verificación legal.** En este orden estricto:
+**Bloque 4 — indicador visual de enriquecimiento en curso**: escribir el
+estado `pending` al arrancar la tarea de enriquecimiento (hoy solo se escribe
+al terminar), suscripción realtime de PocketBase en la app y UI animada en
+`scan-resultado`.
 
-1. Revisar `birrapedia.com/robots.txt` y sus términos de uso/aviso legal
-   (cláusulas de scraping y reutilización de base de datos).
-2. Mismo chequeo para al menos una tienda especializada española relevante.
-3. Averiguar si alguna tiene API oficial (siempre preferible a scraping).
-4. **Solo después** de reportar ese resumen y con el visto bueno, construir
-   `modulo-datos/seed_breweries_es.py` (idempotente, checkpoints incrementales,
-   límites de velocidad, `source="seed"`, `verified=false`), priorizando
-   siempre las webs oficiales de cada cervecera como fuente.
+Notas del Bloque 3 que quedan vivas:
 
-**No construir el script de seed sin la verificación legal previa.**
+- Las fichas del seed tienen `description` vacía a propósito (copyright);
+  se completan vía enriquecimiento. Unas 8 tienen `source_url` apuntando al
+  índice AECAI porque su web oficial estaba caída/bloqueada — candidatas a
+  revisión manual del admin.
+- El seed es re-ejecutable sin miedo (idempotente en nombre y dominio); si se
+  quiere refrescar contra las webs, borrar antes
+  `modulo-datos/seed/.breweries_es_checkpoint.json`.
