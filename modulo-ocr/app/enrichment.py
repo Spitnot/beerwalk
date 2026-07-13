@@ -29,6 +29,7 @@ import json
 import logging
 import re
 import unicodedata
+from urllib.parse import urlparse
 
 import httpx
 
@@ -84,6 +85,75 @@ def should_enrich(item: ScanItem) -> bool:
 def _normalize_key(text: str) -> str:
     text = unicodedata.normalize("NFKD", text.lower())
     return re.sub(r"[^a-z0-9 ]", "", text).strip()
+
+
+def _domain_of(url: str) -> str:
+    host = urlparse(url).netloc.lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _tokens_present(haystack_norm: str, phrase: str) -> bool:
+    """True si TODOS los tokens significativos (≥3 letras, para ignorar
+    "de"/"la"/...) de `phrase` aparecen como palabra en `haystack_norm`
+    (ya normalizado con _normalize_key)."""
+    words = [w for w in _normalize_key(phrase).split() if len(w) >= 3]
+    if not words:
+        return False
+    haystack_words = set(haystack_norm.split())
+    return all(w in haystack_words for w in words)
+
+
+MAX_QUOTE_CHARS = 300
+
+
+def _verify_corroboration(
+    quotes: list[dict],
+    pages: list[dict],
+    brand: str,
+    beer_name: str,
+    brewery_domain: str,
+) -> bool:
+    """Verifica en CÓDIGO — no basta con que el LLM lo declare — que las
+    citas aportadas son reales y mencionan JUNTOS, en el mismo fragmento,
+    la cervecera Y la cerveza.
+
+    Este es el arreglo del caso real "Capricorn Feat Artesants": el listón
+    anterior era un booleano autoevaluado por el propio LLM ("¿esto está
+    corroborado?"), sin ninguna verificación estructural. Una fuente que
+    solo mencionaba el descriptor de estilo ("Blat" = trigo) — sin el
+    nombre de la cervecera buscada — bastó para que el LLM se autoconvenciera
+    de que había "≥2 fuentes independientes". Ahora cada cita debe:
+      1. Ser localizable LITERALMENTE en el texto de la página que dice
+         citar (rechaza citas inventadas/parafraseadas).
+      2. Mencionar, dentro de ese mismo fragmento corto, tanto la marca
+         como el nombre de la cerveza (rechaza fuentes tangenciales que
+         solo hablan del estilo/descriptor genérico).
+
+    Fallo seguro: cualquier cita que no pase estas dos comprobaciones se
+    descarta sin más — nunca cuenta a favor. Corroborado exige ≥2 citas
+    verificadas de dominios distintos, O 1 sola si su dominio es la web
+    oficial ya conocida de la cervecera (mismo criterio de siempre, pero
+    ahora sobre evidencia comprobada en vez de una autoevaluación)."""
+    pages_by_url = {p["url"]: _normalize_key(p["text"]) for p in pages}
+    verified_domains: set[str] = set()
+    for q in quotes[:3]:
+        if not isinstance(q, dict):
+            continue
+        url, quote = q.get("url"), (q.get("quote") or "").strip()
+        if not url or not quote or len(quote) > MAX_QUOTE_CHARS:
+            continue
+        page_text_norm = pages_by_url.get(url)
+        if not page_text_norm:
+            continue  # cita de una URL que no forma parte de las páginas dadas
+        quote_norm = _normalize_key(quote)
+        if not quote_norm or quote_norm not in page_text_norm:
+            continue  # cita no localizable literalmente: probable invención
+        if not (_tokens_present(quote_norm, brand) and _tokens_present(quote_norm, beer_name)):
+            continue  # no menciona cervecera Y cerveza juntas en el fragmento
+        verified_domains.add(_domain_of(url))
+    if brewery_domain and brewery_domain in verified_domains:
+        return True
+    return len(verified_domains) >= 2
 
 
 def _strip_html(raw: str) -> str:
@@ -200,7 +270,6 @@ Estilos existentes en el catálogo (SOLO puedes usar uno de estos, o null):
 Devuelve JSON con este esquema exacto:
 {{
   "found": bool,          // true SOLO si identificas una cerveza real de ESA cervecera
-  "corroborated": bool,   // true si lo confirman ≥2 fuentes independientes O la web oficial
   "beer_name": str|null,  // nombre comercial real de la cerveza
   "style_name": str|null, // EXACTAMENTE uno de los estilos del catálogo, o null
   "abv": float|null,
@@ -208,10 +277,23 @@ Devuelve JSON con este esquema exacto:
                                  // PARAFRASEADO, nunca copiado literal.
   "tasting_notes_es": str|null,  // notas de cata específicas (aroma, sabor, cuerpo),
                                  // distintas de la descripción. PARAFRASEADO.
-  "source_url": str|null
+  "source_url": str|null,
+  "corroborating_quotes": [
+    {{"url": str, "quote": str}}
+  ]  // 0-3 citas. Cada "quote" es un fragmento LITERAL (copiado tal cual de
+     // los "Extractos de las páginas" de arriba, máx. ~300 caracteres,
+     // JAMÁS parafraseado ni inventado) que mencione JUNTOS, en el MISMO
+     // fragmento, el nombre de la cervecera Y el de ESTA cerveza concreta.
+     // Una fuente que solo menciona el estilo o un descriptor genérico
+     // (p.ej. "Blat" = trigo en catalán) SIN el nombre de la cervecera NO
+     // vale como cita, aunque hable de una cerveza de trigo real de otra
+     // marca. Si no hay ningún fragmento así, deja la lista vacía: mejor
+     // found=true sin citas (queda sin corroborar y no se publica) que
+     // inventar una cita que no está en las páginas.
 }}
 
-Sé estricto: si hay ambigüedad o solo una fuente débil, found=false.
+Sé estricto: si hay ambigüedad, o el texto solo confirma el ESTILO/descriptor
+sin el nombre propio de la cervecera, deja "corroborating_quotes" vacío.
 Es mejor no crear la ficha que crearla mal."""
 
 
@@ -463,6 +545,11 @@ async def _enrich_item_inner(enrichment_id: str, line: str, beer_hint: str | Non
             )
             return
         brewery_id, brewery_name = resolved
+        # Dominio de la web oficial ya conocida (si la hay): permite que UNA
+        # sola cita verificada de esa web baste para corroborar (ver
+        # _verify_corroboration), igual que el criterio original.
+        brewery_record = await _pb_get(client, token, "breweries", brewery_id)
+        brewery_domain = _domain_of(brewery_record.get("source_url") or "")
 
         # ── PASO 2: la cerveza CONCRETA, acotada a la marca confirmada ───
         hint = _clean_for_search(beer_hint or line)
@@ -487,7 +574,13 @@ async def _enrich_item_inner(enrichment_id: str, line: str, beer_hint: str | Non
             pages=json.dumps(pages, ensure_ascii=False, indent=1),
             styles=json.dumps(sorted(styles.keys()), ensure_ascii=False),
         ))
-        if not data or not data.get("found") or not data.get("corroborated") or not data.get("beer_name"):
+        corroborated = bool(
+            data and data.get("found") and data.get("beer_name")
+            and _verify_corroboration(
+                data.get("corroborating_quotes") or [], pages, brand, data["beer_name"], brewery_domain,
+            )
+        )
+        if not corroborated:
             await _set_enrichment(
                 client, token, enrichment_id,
                 {"status": "no_match",
